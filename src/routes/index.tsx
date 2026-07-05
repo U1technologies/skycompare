@@ -285,11 +285,11 @@ function HotelForm() {
   return (
     <div className="grid gap-2 md:grid-cols-6">
       <Field label="Destination" icon={<MapPin className="h-3 w-3" />} className="md:col-span-2">
-        <Input
-          className={inputClass}
-          placeholder="City, hotel or airport"
+        <DestinationAutocomplete
           value={s.destination}
-          onChange={(e) => setS({ ...s, destination: e.target.value })}
+          onChange={(v) => setS({ ...s, destination: v })}
+          kinds={["city", "hotel", "airport"]}
+          placeholder="City, hotel or airport"
         />
       </Field>
       <Field label="Check-in" icon={<CalendarDays className="h-3 w-3" />}>
