@@ -367,10 +367,22 @@ function FlightForm() {
 
       <div className="grid gap-2 md:grid-cols-6">
         <Field label="From" icon={<Plane className="h-3 w-3 -rotate-45" />}>
-          <Input className={inputClass} placeholder="JFK" value={s.from} onChange={(e) => setS({ ...s, from: e.target.value.toUpperCase() })} />
+          <DestinationAutocomplete
+            value={s.from}
+            onChange={(v) => setS({ ...s, from: v })}
+            kinds={["airport", "city"]}
+            placeholder="JFK"
+            autoUpper
+          />
         </Field>
         <Field label="To" icon={<Plane className="h-3 w-3 rotate-45" />}>
-          <Input className={inputClass} placeholder="LHR" value={s.to} onChange={(e) => setS({ ...s, to: e.target.value.toUpperCase() })} />
+          <DestinationAutocomplete
+            value={s.to}
+            onChange={(v) => setS({ ...s, to: v })}
+            kinds={["airport", "city"]}
+            placeholder="LHR"
+            autoUpper
+          />
         </Field>
         <Field label="Departure" icon={<CalendarDays className="h-3 w-3" />}>
           <Input type="date" className={inputClass} value={s.depart} onChange={(e) => setS({ ...s, depart: e.target.value })} />
