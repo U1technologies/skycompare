@@ -52,7 +52,6 @@ describe("flight affiliate links", () => {
   for (const provider of FLIGHT_PROVIDERS) {
     it(`${provider.name}: preserves airports, dates, travellers, and cabin`, () => {
       const url = provider.build(FLIGHT);
-      expect(url).toContain("JFK".toLowerCase()) || expect(url).toContain("JFK");
       expect(url.toUpperCase()).toContain("JFK");
       expect(url.toUpperCase()).toContain("LHR");
       // Cabin class preserved (either lower-cased in path or query).
