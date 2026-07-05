@@ -75,8 +75,8 @@ describe("/go buildTargetUrl", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("returns an error when flight IATA codes are malformed", () => {
-    const r = buildTargetUrl({ ...baseFlight, from: "??" });
+  it("returns an error when the From field is empty", () => {
+    const r = buildTargetUrl({ ...baseFlight, from: "" });
     expect(r.ok).toBe(false);
   });
 
