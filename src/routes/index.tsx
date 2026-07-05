@@ -52,6 +52,7 @@ import {
   type HotelSearch,
   type FlightSearch,
 } from "@/lib/affiliates";
+import { DestinationAutocomplete } from "@/components/DestinationAutocomplete";
 
 export const Route = createFileRoute("/")({
   head: () => ({
