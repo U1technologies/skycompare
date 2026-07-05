@@ -1,12 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { Loader2, ExternalLink, AlertTriangle } from "lucide-react";
-import {
-  HOTEL_PROVIDERS,
-  FLIGHT_PROVIDERS,
-  type HotelSearch,
-  type FlightSearch,
-} from "@/lib/affiliates";
+import { motion } from "framer-motion";
+import { ExternalLink, AlertTriangle, Check, Loader2 } from "lucide-react";
+import { HOTEL_PROVIDERS, FLIGHT_PROVIDERS } from "@/lib/affiliates";
+import { goSchema, type GoParams } from "@/lib/go-schema";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -17,10 +14,12 @@ import { Button } from "@/components/ui/button";
  *   /go?type=flight&provider=kayak&tripType=round-trip&from=JFK&to=LHR&depart=2026-07-10&return=2026-07-17&travellers=1&cabin=economy
  *
  * The route:
- *  - Parses & validates all search params
+ *  - Zod-validates every query parameter
+ *  - Shows a "Comparing prices from KAYAK, Skyscanner, Agoda…" loading UI
  *  - Rebuilds a safe, fully-encoded affiliate deep-link
  *  - Auto-redirects (window.location.replace) after a short delay
- *  - Falls back to a manual "Continue" button if the browser blocks it
+ *  - On failure, offers a manual link to the requested partner AND a fallback
+ *    partner so the user is never stuck.
  */
 
 type Search = Record<string, string | undefined>;
@@ -36,108 +35,125 @@ export const Route = createFileRoute("/go")({
   },
   head: () => ({
     meta: [
-      { title: "Redirecting… — SkyCompare" },
+      { title: "Comparing prices… — SkyCompare" },
       { name: "robots", content: "noindex, nofollow" },
     ],
   }),
   component: GoPage,
 });
 
-function buildTargetUrl(params: Search): { url: string; providerName: string } | { error: string } {
-  const type = params.type;
-  const providerId = params.provider;
-  if (!type || !providerId) return { error: "Missing type or provider." };
+type BuildOk = {
+  ok: true;
+  url: string;
+  providerName: string;
+  data: GoParams;
+  fallback?: { url: string; providerName: string };
+};
+type BuildErr = { ok: false; error: string; fallback?: { url: string; providerName: string } };
 
-  if (type === "hotel") {
-    const provider = HOTEL_PROVIDERS.find((p) => p.id === providerId);
-    if (!provider) return { error: `Unknown hotel provider: ${providerId}` };
-
-    const s: HotelSearch = {
-      destination: (params.destination ?? "").trim(),
-      checkIn: params.checkIn ?? "",
-      checkOut: params.checkOut ?? "",
-      rooms: clampInt(params.rooms, 1, 8, 1),
-      adults: clampInt(params.adults, 1, 16, 2),
-      children: clampInt(params.children, 0, 8, 0),
-    };
-    if (!s.destination) return { error: "Missing destination." };
-    if (!isValidDate(s.checkIn) || !isValidDate(s.checkOut))
-      return { error: "Invalid check-in / check-out date." };
-    if (new Date(s.checkOut) <= new Date(s.checkIn))
-      return { error: "Check-out must be after check-in." };
-
-    return { url: provider.build(s), providerName: provider.name };
+function buildTargetUrl(params: Search): BuildOk | BuildErr {
+  const parsed = goSchema.safeParse(params);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    return { ok: false, error: first ? `${first.path.join(".") || "input"}: ${first.message}` : "Invalid search parameters." };
   }
+  const data = parsed.data;
 
-  if (type === "flight") {
-    const provider = FLIGHT_PROVIDERS.find((p) => p.id === providerId);
-    if (!provider) return { error: `Unknown flight provider: ${providerId}` };
-
-    const tripType: FlightSearch["tripType"] =
-      params.tripType === "one-way" ? "one-way" : "round-trip";
-    const cabin: FlightSearch["cabin"] =
-      (["economy", "premium", "business", "first"] as const).find((c) => c === params.cabin) ??
-      "economy";
-
-    const s: FlightSearch = {
-      tripType,
-      from: (params.from ?? "").trim().toUpperCase(),
-      to: (params.to ?? "").trim().toUpperCase(),
-      depart: params.depart ?? "",
-      return: params.return || undefined,
-      travellers: clampInt(params.travellers, 1, 9, 1),
-      cabin,
-    };
-    if (!s.from || !s.to) return { error: "Missing From / To airport." };
-    if (!isValidDate(s.depart)) return { error: "Invalid departure date." };
-    if (tripType === "round-trip") {
-      if (!s.return || !isValidDate(s.return))
-        return { error: "Invalid return date." };
-      if (new Date(s.return) <= new Date(s.depart))
-        return { error: "Return must be after departure." };
+  try {
+    if (data.type === "hotel") {
+      const provider = HOTEL_PROVIDERS.find((p) => p.id === data.provider);
+      if (!provider) {
+        const fb = pickFallbackHotel(data.provider);
+        return {
+          ok: false,
+          error: `Unknown hotel provider: ${data.provider}`,
+          fallback: fb ? { url: fb.build(data), providerName: fb.name } : undefined,
+        };
+      }
+      const url = provider.build(data);
+      const fb = pickFallbackHotel(provider.id);
+      return {
+        ok: true,
+        url,
+        providerName: provider.name,
+        data,
+        fallback: fb ? { url: fb.build(data), providerName: fb.name } : undefined,
+      };
     }
-    return { url: provider.build(s), providerName: provider.name };
+
+    const provider = FLIGHT_PROVIDERS.find((p) => p.id === data.provider);
+    if (!provider) {
+      const fb = pickFallbackFlight(data.provider);
+      return {
+        ok: false,
+        error: `Unknown flight provider: ${data.provider}`,
+        fallback: fb ? { url: fb.build(data), providerName: fb.name } : undefined,
+      };
+    }
+    const url = provider.build(data);
+    const fb = pickFallbackFlight(provider.id);
+    return {
+      ok: true,
+      url,
+      providerName: provider.name,
+      data,
+      fallback: fb ? { url: fb.build(data), providerName: fb.name } : undefined,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Couldn't build that link: ${e instanceof Error ? e.message : "unknown error"}`,
+    };
   }
-
-  return { error: `Unknown search type: ${type}` };
 }
 
-function clampInt(v: string | undefined, min: number, max: number, fallback: number) {
-  const n = Number.parseInt(v ?? "", 10);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(max, Math.max(min, n));
+function pickFallbackHotel(excludeId: string) {
+  return HOTEL_PROVIDERS.find((p) => p.id !== excludeId);
+}
+function pickFallbackFlight(excludeId: string) {
+  return FLIGHT_PROVIDERS.find((p) => p.id !== excludeId);
 }
 
-function isValidDate(v: string) {
-  return /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(v).getTime());
-}
+const LOADING_PARTNERS = ["KAYAK", "Skyscanner", "Booking.com", "Agoda", "Expedia", "Trip.com"];
 
 function GoPage() {
   const params = Route.useSearch();
   const result = useMemo(() => buildTargetUrl(params), [params]);
-  const [countdown, setCountdown] = useState(2);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
-    if ("error" in result) return;
+    if (!result.ok) return;
     if (typeof window === "undefined") return;
-    const t = setTimeout(() => window.location.replace(result.url), 1200);
-    const i = setInterval(() => setCountdown((c) => Math.max(0, c - 1)), 1000);
+    const stepper = setInterval(
+      () => setStep((s) => Math.min(LOADING_PARTNERS.length, s + 1)),
+      280,
+    );
+    const redirect = setTimeout(() => window.location.replace(result.url), 2200);
     return () => {
-      clearTimeout(t);
-      clearInterval(i);
+      clearInterval(stepper);
+      clearTimeout(redirect);
     };
   }, [result]);
 
-  if ("error" in result) {
+  if (!result.ok) {
     return (
       <main className="grid min-h-[100svh] place-items-center bg-background p-6">
         <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-soft">
           <AlertTriangle className="mx-auto mb-4 h-10 w-10 text-destructive" />
-          <h1 className="text-xl font-bold">Can't build that link</h1>
+          <h1 className="text-xl font-bold">We couldn't build that link</h1>
           <p className="mt-2 text-sm text-muted-foreground">{result.error}</p>
-          <Button asChild className="mt-6 bg-gradient-brand text-primary-foreground">
-            <a href="/">Back to search</a>
-          </Button>
+          <div className="mt-6 flex flex-col gap-2">
+            {result.fallback && (
+              <Button asChild className="bg-gradient-brand text-primary-foreground shadow-brand">
+                <a href={result.fallback.url} target="_blank" rel="noopener noreferrer">
+                  Try {result.fallback.providerName} instead <ExternalLink className="ml-2 h-4 w-4" />
+                </a>
+              </Button>
+            )}
+            <Button asChild variant="outline">
+              <a href="/">Back to search</a>
+            </Button>
+          </div>
         </div>
       </main>
     );
@@ -145,23 +161,59 @@ function GoPage() {
 
   return (
     <main className="grid min-h-[100svh] place-items-center bg-background p-6">
-      <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-soft">
-        <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
-        <h1 className="text-xl font-bold">
-          Redirecting to <span className="text-gradient-brand">{result.providerName}</span>
+      <div className="w-full max-w-lg rounded-3xl border border-border bg-card p-8 text-center shadow-soft">
+        <div className="mx-auto mb-6 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-brand text-primary-foreground shadow-brand">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+        <h1 className="text-2xl font-extrabold tracking-tight">
+          Comparing prices from top partners
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Opening in {countdown}s. If nothing happens, tap continue.
+          Finding the best deal for your trip on{" "}
+          <span className="font-semibold text-foreground">{result.providerName}</span>.
         </p>
-        <Button
-          asChild
-          className="mt-6 bg-gradient-brand text-primary-foreground shadow-brand"
-        >
-          <a href={result.url} rel="noopener noreferrer">
-            Continue to {result.providerName} <ExternalLink className="ml-2 h-4 w-4" />
-          </a>
-        </Button>
-        <p className="mt-4 break-all text-[11px] text-muted-foreground/70">{result.url}</p>
+
+        <ul className="mt-6 space-y-2 text-left">
+          {LOADING_PARTNERS.map((name, i) => {
+            const done = i < step;
+            return (
+              <motion.li
+                key={name}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.08 }}
+                className="flex items-center justify-between rounded-xl bg-secondary/60 px-4 py-2.5 text-sm"
+              >
+                <span className="font-semibold text-foreground/80">{name}</span>
+                {done ? (
+                  <span className="flex items-center gap-1 text-xs font-semibold text-primary">
+                    <Check className="h-3.5 w-3.5" /> Compared
+                  </span>
+                ) : (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                )}
+              </motion.li>
+            );
+          })}
+        </ul>
+
+        <div className="mt-6 flex flex-col gap-2">
+          <Button
+            asChild
+            className="bg-gradient-brand text-primary-foreground shadow-brand"
+          >
+            <a href={result.url} rel="noopener noreferrer">
+              Continue to {result.providerName} <ExternalLink className="ml-2 h-4 w-4" />
+            </a>
+          </Button>
+          {result.fallback && (
+            <Button asChild variant="ghost" size="sm">
+              <a href={result.fallback.url} target="_blank" rel="noopener noreferrer">
+                Also check {result.fallback.providerName} →
+              </a>
+            </Button>
+          )}
+        </div>
       </div>
     </main>
   );

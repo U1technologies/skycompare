@@ -52,6 +52,7 @@ import {
   type HotelSearch,
   type FlightSearch,
 } from "@/lib/affiliates";
+import { DestinationAutocomplete } from "@/components/DestinationAutocomplete";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -151,20 +152,20 @@ function Hero() {
       />
       <div className="absolute inset-0 -z-10 bg-gradient-hero" />
 
-      <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 sm:pb-16 sm:pt-10 lg:pb-20 lg:pt-12">
+      <div className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-6 sm:pb-14 sm:pt-10 lg:pb-20 lg:pt-14">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7 }}
-          className="mx-auto max-w-3xl text-center text-white"
+          className="mx-auto max-w-[22rem] text-center text-white sm:max-w-2xl lg:max-w-4xl"
         >
           <span className="inline-flex items-center gap-1.5 rounded-full glass-dark px-2.5 py-1 text-[10px] font-medium text-white/90 sm:text-xs">
             <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> Compare 100+ trusted travel brands
           </span>
-          <h1 className="mt-3 text-2xl font-extrabold leading-tight sm:mt-4 sm:text-4xl md:text-5xl">
+          <h1 className="mt-3 text-balance text-[1.35rem] font-extrabold leading-[1.15] tracking-tight sm:mt-4 sm:text-3xl md:text-4xl lg:text-5xl xl:text-[3.25rem]">
             Compare Hotel &amp; Flight Prices from Top Travel Brands
           </h1>
-          <p className="mt-2 text-sm text-white/85 sm:mt-3 sm:text-base">
+          <p className="mt-2 text-pretty text-[13px] text-white/85 sm:mt-3 sm:text-sm md:text-base">
             Find the best deals and book with trusted travel partners.
           </p>
         </motion.div>
@@ -284,11 +285,11 @@ function HotelForm() {
   return (
     <div className="grid gap-2 md:grid-cols-6">
       <Field label="Destination" icon={<MapPin className="h-3 w-3" />} className="md:col-span-2">
-        <Input
-          className={inputClass}
-          placeholder="City, hotel or airport"
+        <DestinationAutocomplete
           value={s.destination}
-          onChange={(e) => setS({ ...s, destination: e.target.value })}
+          onChange={(v) => setS({ ...s, destination: v })}
+          kinds={["city", "hotel", "airport"]}
+          placeholder="City, hotel or airport"
         />
       </Field>
       <Field label="Check-in" icon={<CalendarDays className="h-3 w-3" />}>
@@ -366,10 +367,22 @@ function FlightForm() {
 
       <div className="grid gap-2 md:grid-cols-6">
         <Field label="From" icon={<Plane className="h-3 w-3 -rotate-45" />}>
-          <Input className={inputClass} placeholder="JFK" value={s.from} onChange={(e) => setS({ ...s, from: e.target.value.toUpperCase() })} />
+          <DestinationAutocomplete
+            value={s.from}
+            onChange={(v) => setS({ ...s, from: v })}
+            kinds={["airport", "city"]}
+            placeholder="JFK"
+            autoUpper
+          />
         </Field>
         <Field label="To" icon={<Plane className="h-3 w-3 rotate-45" />}>
-          <Input className={inputClass} placeholder="LHR" value={s.to} onChange={(e) => setS({ ...s, to: e.target.value.toUpperCase() })} />
+          <DestinationAutocomplete
+            value={s.to}
+            onChange={(v) => setS({ ...s, to: v })}
+            kinds={["airport", "city"]}
+            placeholder="LHR"
+            autoUpper
+          />
         </Field>
         <Field label="Departure" icon={<CalendarDays className="h-3 w-3" />}>
           <Input type="date" className={inputClass} value={s.depart} onChange={(e) => setS({ ...s, depart: e.target.value })} />
