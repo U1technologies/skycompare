@@ -134,3 +134,30 @@ export const FLIGHT_PROVIDERS: (Provider & { build: (s: FlightSearch) => string 
 export function openAffiliate(url: string) {
   if (typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer");
 }
+
+/**
+ * Build a URL to our internal /go redirect handler, preserving every search
+ * parameter (dates, travellers, cabin class, rooms, etc.) as safely-encoded
+ * query string values. The /go route re-validates and rebuilds the affiliate
+ * deep link server- or client-side before redirecting.
+ */
+function toQuery(obj: Record<string, string | number | undefined>) {
+  const p = new URLSearchParams();
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined || v === null || v === "") continue;
+    p.set(k, String(v));
+  }
+  return p.toString();
+}
+
+export function buildHotelRedirect(providerId: string, s: HotelSearch) {
+  return `/go?${toQuery({ type: "hotel", provider: providerId, ...s })}`;
+}
+
+export function buildFlightRedirect(providerId: string, s: FlightSearch) {
+  return `/go?${toQuery({ type: "flight", provider: providerId, ...s })}`;
+}
+
+export function openRedirect(url: string) {
+  if (typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer");
+}
