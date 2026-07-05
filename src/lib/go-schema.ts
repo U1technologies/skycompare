@@ -67,7 +67,7 @@ export const flightGoSchema = z
     path: ["return"],
   });
 
-export const goSchema = z.discriminatedUnion("type", [hotelGoSchema, flightGoSchema]);
+export const goSchema = z.union([hotelGoSchema, flightGoSchema]);
 
 export type HotelGo = z.infer<typeof hotelGoSchema>;
 export type FlightGo = z.infer<typeof flightGoSchema>;
