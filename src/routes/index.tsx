@@ -46,7 +46,9 @@ import logo from "@/assets/logo.png";
 import {
   HOTEL_PROVIDERS,
   FLIGHT_PROVIDERS,
-  openAffiliate,
+  buildHotelRedirect,
+  buildFlightRedirect,
+  openRedirect,
   type HotelSearch,
   type FlightSearch,
 } from "@/lib/affiliates";
