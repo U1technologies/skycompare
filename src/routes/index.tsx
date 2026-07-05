@@ -266,6 +266,7 @@ function HotelForm() {
     adults: 2,
     children: 0,
   });
+  const [providerId, setProviderId] = useState(HOTEL_PROVIDERS[0].id);
 
   const handleSearch = () => {
     if (!s.destination.trim()) {
@@ -276,7 +277,8 @@ function HotelForm() {
       toast.error("Check-out must be after check-in");
       return;
     }
-    const p = HOTEL_PROVIDERS[0];
+    const p = HOTEL_PROVIDERS.find((p) => p.id === providerId)!;
+    toast.success(`Redirecting to ${p.name}…`);
     openRedirect(buildHotelRedirect(p.id, s));
   };
 
@@ -306,6 +308,21 @@ function HotelForm() {
       <Button onClick={handleSearch} className="h-full min-h-14 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95">
         <Search className="mr-2 h-5 w-5" /> Search
       </Button>
+
+      <div className="md:col-span-6 flex flex-wrap items-center gap-2 pt-1">
+        <span className="text-xs font-medium text-muted-foreground">Redirect to:</span>
+        {HOTEL_PROVIDERS.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setProviderId(p.id)}
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+              providerId === p.id ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground/70 hover:bg-secondary/70"
+            }`}
+          >
+            {p.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -320,13 +337,15 @@ function FlightForm() {
     travellers: 1,
     cabin: "economy",
   });
+  const [providerId, setProviderId] = useState(FLIGHT_PROVIDERS[0].id);
 
   const handleSearch = () => {
     if (!s.from.trim() || !s.to.trim()) {
       toast.error("Enter both From and To airports");
       return;
     }
-    const p = FLIGHT_PROVIDERS[0];
+    const p = FLIGHT_PROVIDERS.find((p) => p.id === providerId)!;
+    toast.success(`Redirecting to ${p.name}…`);
     openRedirect(buildFlightRedirect(p.id, s));
   };
 
@@ -396,6 +415,21 @@ function FlightForm() {
         <Button onClick={handleSearch} className="h-full min-h-14 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95">
           <Search className="mr-2 h-5 w-5" /> Search
         </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 pt-1">
+        <span className="text-xs font-medium text-muted-foreground">Redirect to:</span>
+        {FLIGHT_PROVIDERS.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setProviderId(p.id)}
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+              providerId === p.id ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground/70 hover:bg-secondary/70"
+            }`}
+          >
+            {p.name}
+          </button>
+        ))}
       </div>
     </div>
   );
