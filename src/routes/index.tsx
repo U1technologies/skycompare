@@ -141,7 +141,7 @@ function Header() {
 
 function Hero() {
   return (
-    <section id="top" className="relative isolate min-h-[100svh] w-full overflow-hidden pt-24">
+    <section id="top" className="relative isolate w-full overflow-hidden pt-20 sm:pt-24">
       <img
         src={heroImage}
         alt="Aerial view of a tropical island with overwater bungalows"
@@ -151,20 +151,20 @@ function Hero() {
       />
       <div className="absolute inset-0 -z-10 bg-gradient-hero" />
 
-      <div className="mx-auto max-w-7xl px-4 pb-24 pt-10 sm:px-6 lg:pt-16">
+      <div className="mx-auto max-w-7xl px-4 pb-12 pt-6 sm:px-6 sm:pb-16 sm:pt-10 lg:pb-20 lg:pt-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7 }}
           className="mx-auto max-w-3xl text-center text-white"
         >
-          <span className="inline-flex items-center gap-2 rounded-full glass-dark px-3 py-1 text-xs font-medium text-white/90">
-            <Sparkles className="h-3.5 w-3.5" /> Compare 100+ trusted travel brands
+          <span className="inline-flex items-center gap-1.5 rounded-full glass-dark px-2.5 py-1 text-[10px] font-medium text-white/90 sm:text-xs">
+            <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5" /> Compare 100+ trusted travel brands
           </span>
-          <h1 className="mt-5 text-4xl font-extrabold leading-tight sm:text-5xl md:text-6xl">
-            Compare Hotel & Flight Prices from Top Travel Brands
+          <h1 className="mt-3 text-2xl font-extrabold leading-tight sm:mt-4 sm:text-4xl md:text-5xl">
+            Compare Hotel &amp; Flight Prices from Top Travel Brands
           </h1>
-          <p className="mt-4 text-base text-white/85 sm:text-lg">
+          <p className="mt-2 text-sm text-white/85 sm:mt-3 sm:text-base">
             Find the best deals and book with trusted travel partners.
           </p>
         </motion.div>
@@ -174,7 +174,7 @@ function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.15 }}
           id="search"
-          className="mx-auto mt-10 max-w-5xl"
+          className="mx-auto mt-6 max-w-5xl sm:mt-8"
         >
           <SearchBox />
         </motion.div>
@@ -278,7 +278,7 @@ function HotelForm() {
     }
     const p = HOTEL_PROVIDERS.find((p) => p.id === providerId)!;
     toast.success(`Redirecting to ${p.name}…`);
-    openAffiliate(p.build(s));
+    openRedirect(buildHotelRedirect(p.id, s));
   };
 
   return (
@@ -345,7 +345,7 @@ function FlightForm() {
     }
     const p = FLIGHT_PROVIDERS.find((p) => p.id === providerId)!;
     toast.success(`Redirecting to ${p.name}…`);
-    openAffiliate(p.build(s));
+    openRedirect(buildFlightRedirect(p.id, s));
   };
 
   return (
