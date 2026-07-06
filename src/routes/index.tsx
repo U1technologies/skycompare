@@ -52,6 +52,10 @@ import {
   type HotelSearch,
   type FlightSearch,
 } from "@/lib/affiliates";
+import {
+  DEFAULT_HOTEL_PROVIDER_ID,
+  DEFAULT_FLIGHT_PROVIDER_ID,
+} from "@/lib/affiliate-config";
 import { DestinationAutocomplete } from "@/components/DestinationAutocomplete";
 
 export const Route = createFileRoute("/")({
@@ -276,7 +280,7 @@ function HotelForm() {
       toast.error("Check-out must be after check-in");
       return;
     }
-    const p = HOTEL_PROVIDERS[0];
+    const p = HOTEL_PROVIDERS.find((x) => x.id === DEFAULT_HOTEL_PROVIDER_ID) ?? HOTEL_PROVIDERS[0];
     openRedirect(buildHotelRedirect(p.id, s));
   };
 
@@ -326,7 +330,7 @@ function FlightForm() {
       toast.error("Enter both From and To airports");
       return;
     }
-    const p = FLIGHT_PROVIDERS[0];
+    const p = FLIGHT_PROVIDERS.find((x) => x.id === DEFAULT_FLIGHT_PROVIDER_ID) ?? FLIGHT_PROVIDERS[0];
     openRedirect(buildFlightRedirect(p.id, s));
   };
 
