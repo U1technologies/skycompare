@@ -1,15 +1,19 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
-import { ExternalLink, AlertTriangle } from "lucide-react";
+import { ExternalLink, AlertTriangle, ShieldCheck } from "lucide-react";
 import { HOTEL_PROVIDERS, FLIGHT_PROVIDERS } from "@/lib/affiliates";
 import { goSchema, type GoParams } from "@/lib/go-schema";
+import { REDIRECT_MODE } from "@/lib/affiliate-config";
 import { Button } from "@/components/ui/button";
 
 /**
  * Dedicated affiliate redirect handler.
  *
- * Redirects immediately to the partner (no loading/comparing UI). If link
- * generation fails, shows a friendly error page with a fallback partner link.
+ * Behaviour is driven by REDIRECT_MODE (src/lib/affiliate-config.ts):
+ *   - "auto"    → immediately window.location.replace() to the primary partner.
+ *   - "confirm" → render a "Continue to <Partner>" screen with alternatives.
+ * If link generation fails, always show a friendly error page with a
+ * fallback partner link.
  */
 
 type Search = Record<string, string | undefined>;
@@ -32,14 +36,17 @@ export const Route = createFileRoute("/go")({
   component: GoPage,
 });
 
-type BuildOk = {
+export type Alternative = { id: string; url: string; providerName: string };
+
+export type BuildOk = {
   ok: true;
   url: string;
   providerName: string;
   data: GoParams;
-  fallback?: { url: string; providerName: string };
+  fallback?: Alternative;
+  alternatives: Alternative[];
 };
-type BuildErr = { ok: false; error: string; fallback?: { url: string; providerName: string } };
+export type BuildErr = { ok: false; error: string; fallback?: Alternative };
 
 export function buildTargetUrl(params: Search): BuildOk | BuildErr {
   const parsed = goSchema.safeParse(params);
@@ -58,41 +65,51 @@ export function buildTargetUrl(params: Search): BuildOk | BuildErr {
     if (data.type === "hotel") {
       const provider = HOTEL_PROVIDERS.find((p) => p.id === data.provider);
       if (!provider) {
-        const fb = pickFallbackHotel(data.provider);
+        const fb = HOTEL_PROVIDERS.find((p) => p.id !== data.provider);
         return {
           ok: false,
           error: `Unknown hotel provider: ${data.provider}`,
-          fallback: fb ? { url: fb.build(data), providerName: fb.name } : undefined,
+          fallback: fb ? { id: fb.id, url: fb.build(data), providerName: fb.name } : undefined,
         };
       }
       const url = provider.build(data);
-      const fb = pickFallbackHotel(provider.id);
+      const alternatives = HOTEL_PROVIDERS.filter((p) => p.id !== provider.id).map((p) => ({
+        id: p.id,
+        url: p.build(data),
+        providerName: p.name,
+      }));
       return {
         ok: true,
         url,
         providerName: provider.name,
         data,
-        fallback: fb ? { url: fb.build(data), providerName: fb.name } : undefined,
+        alternatives,
+        fallback: alternatives[0],
       };
     }
 
     const provider = FLIGHT_PROVIDERS.find((p) => p.id === data.provider);
     if (!provider) {
-      const fb = pickFallbackFlight(data.provider);
+      const fb = FLIGHT_PROVIDERS.find((p) => p.id !== data.provider);
       return {
         ok: false,
         error: `Unknown flight provider: ${data.provider}`,
-        fallback: fb ? { url: fb.build(data), providerName: fb.name } : undefined,
+        fallback: fb ? { id: fb.id, url: fb.build(data), providerName: fb.name } : undefined,
       };
     }
     const url = provider.build(data);
-    const fb = pickFallbackFlight(provider.id);
+    const alternatives = FLIGHT_PROVIDERS.filter((p) => p.id !== provider.id).map((p) => ({
+      id: p.id,
+      url: p.build(data),
+      providerName: p.name,
+    }));
     return {
       ok: true,
       url,
       providerName: provider.name,
       data,
-      fallback: fb ? { url: fb.build(data), providerName: fb.name } : undefined,
+      alternatives,
+      fallback: alternatives[0],
     };
   } catch (e) {
     return {
@@ -102,23 +119,19 @@ export function buildTargetUrl(params: Search): BuildOk | BuildErr {
   }
 }
 
-function pickFallbackHotel(excludeId: string) {
-  return HOTEL_PROVIDERS.find((p) => p.id !== excludeId);
-}
-function pickFallbackFlight(excludeId: string) {
-  return FLIGHT_PROVIDERS.find((p) => p.id !== excludeId);
-}
-
-function GoPage() {
-  const params = Route.useSearch();
-  const result = useMemo(() => buildTargetUrl(params), [params]);
-
-  useEffect(() => {
-    if (!result.ok) return;
-    if (typeof window === "undefined") return;
-    window.location.replace(result.url);
-  }, [result]);
-
+/**
+ * Pure view rendered by /go. Exported so tests can render it without the
+ * router. `mode` mirrors REDIRECT_MODE; when "auto" and result is ok, the
+ * caller is responsible for triggering the actual navigation (side effect
+ * lives in GoPage).
+ */
+export function GoView({
+  result,
+  mode,
+}: {
+  result: BuildOk | BuildErr;
+  mode: "auto" | "confirm";
+}) {
   if (!result.ok) {
     return (
       <main className="grid min-h-[100svh] place-items-center bg-background p-6">
@@ -129,7 +142,9 @@ function GoPage() {
         >
           <AlertTriangle className="mx-auto mb-4 h-10 w-10 text-destructive" />
           <h1 className="text-xl font-bold">We couldn't build that link</h1>
-          <p className="mt-2 text-sm text-muted-foreground">{result.error}</p>
+          <p data-testid="go-error-message" className="mt-2 text-sm text-muted-foreground">
+            {result.error}
+          </p>
           <div className="mt-6 flex flex-col gap-2">
             {result.fallback && (
               <Button asChild className="bg-gradient-brand text-primary-foreground shadow-brand">
@@ -152,6 +167,61 @@ function GoPage() {
     );
   }
 
+  if (mode === "confirm") {
+    return (
+      <main className="grid min-h-[100svh] place-items-center bg-background p-6">
+        <div
+          data-testid="go-confirm"
+          className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-soft"
+        >
+          <ShieldCheck className="mx-auto mb-4 h-10 w-10 text-primary" />
+          <h1 className="text-xl font-bold">Continue to {result.providerName}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            You'll be taken to {result.providerName} to complete your search. Booking happens on
+            their secure site — never here.
+          </p>
+          <div className="mt-6 flex flex-col gap-2">
+            <Button asChild className="bg-gradient-brand text-primary-foreground shadow-brand">
+              <a
+                data-testid="continue-primary"
+                href={result.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Continue to {result.providerName} <ExternalLink className="ml-2 h-4 w-4" />
+              </a>
+            </Button>
+            {result.alternatives.length > 0 && (
+              <div className="mt-4">
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+                  Or compare with
+                </p>
+                <div className="grid grid-cols-2 gap-2">
+                  {result.alternatives.slice(0, 6).map((alt) => (
+                    <a
+                      key={alt.id}
+                      data-testid={`alt-${alt.id}`}
+                      href={alt.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-xl border border-border bg-background px-3 py-2 text-xs font-semibold text-foreground/80 transition hover:text-primary"
+                    >
+                      {alt.providerName}
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+            <Button asChild variant="ghost" className="mt-2">
+              <a href="/">Back to search</a>
+            </Button>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // auto mode
   return (
     <main className="grid min-h-[100svh] place-items-center bg-background p-6">
       <noscript>
@@ -167,4 +237,18 @@ function GoPage() {
       </a>
     </main>
   );
+}
+
+function GoPage() {
+  const params = Route.useSearch();
+  const result = useMemo(() => buildTargetUrl(params), [params]);
+
+  useEffect(() => {
+    if (!result.ok) return;
+    if (REDIRECT_MODE !== "auto") return;
+    if (typeof window === "undefined") return;
+    window.location.replace(result.url);
+  }, [result]);
+
+  return <GoView result={result} mode={REDIRECT_MODE} />;
 }
