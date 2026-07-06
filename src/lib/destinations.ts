@@ -193,37 +193,75 @@ export type SearchOptions = {
  * Fuzzy-search destinations by name, region, label, or IATA code.
  * Ranks exact IATA matches, prefix matches, then substring matches.
  */
+/**
+ * Precomputed normalized fields for each destination — computed once on module
+ * load so `searchDestinations` never re-normalizes the dataset while typing.
+ */
+type Indexed = {
+  d: Destination;
+  name: string;
+  region: string;
+  label: string;
+  iata: string;
+};
+const INDEX: Indexed[] = DESTINATIONS.map((d) => ({
+  d,
+  name: norm(d.name),
+  region: norm(d.region),
+  label: norm(d.label),
+  iata: d.iata ? norm(d.iata) : "",
+}));
+
+/**
+ * LRU-ish memoization keyed by (query|kinds|limit). Cuts repeat filters to
+ * O(1) while the user backspaces, retypes, or focuses/blurs the field.
+ */
+const CACHE = new Map<string, Destination[]>();
+const CACHE_MAX = 128;
+
 export function searchDestinations(query: string, opts: SearchOptions = {}): Destination[] {
   const q = norm(query.trim());
   if (!q) return [];
   const kinds = opts.kinds;
   const limit = opts.limit ?? 8;
 
+  const cacheKey = `${q}|${kinds ? kinds.slice().sort().join(",") : "*"}|${limit}`;
+  const cached = CACHE.get(cacheKey);
+  if (cached) {
+    // Refresh LRU position.
+    CACHE.delete(cacheKey);
+    CACHE.set(cacheKey, cached);
+    return cached;
+  }
+
   type Scored = { d: Destination; score: number };
   const scored: Scored[] = [];
 
-  for (const d of DESTINATIONS) {
-    if (kinds && !kinds.includes(d.kind)) continue;
-    const name = norm(d.name);
-    const region = norm(d.region);
-    const label = norm(d.label);
-    const iata = d.iata ? norm(d.iata) : "";
+  for (const idx of INDEX) {
+    if (kinds && !kinds.includes(idx.d.kind)) continue;
 
     let score = -1;
-    if (iata && iata === q) score = 100;
-    else if (name === q) score = 90;
-    else if (iata && iata.startsWith(q)) score = 80;
-    else if (name.startsWith(q)) score = 70;
-    else if (label.startsWith(q)) score = 60;
-    else if (name.includes(q)) score = 50;
-    else if (region.includes(q)) score = 30;
-    else if (label.includes(q)) score = 20;
+    if (idx.iata && idx.iata === q) score = 100;
+    else if (idx.name === q) score = 90;
+    else if (idx.iata && idx.iata.startsWith(q)) score = 80;
+    else if (idx.name.startsWith(q)) score = 70;
+    else if (idx.label.startsWith(q)) score = 60;
+    else if (idx.name.includes(q)) score = 50;
+    else if (idx.region.includes(q)) score = 30;
+    else if (idx.label.includes(q)) score = 20;
 
-    if (score >= 0) scored.push({ d, score });
+    if (score >= 0) scored.push({ d: idx.d, score });
   }
 
   scored.sort((a, b) => b.score - a.score || a.d.name.length - b.d.name.length);
-  return scored.slice(0, limit).map((s) => s.d);
+  const out = scored.slice(0, limit).map((s) => s.d);
+
+  if (CACHE.size >= CACHE_MAX) {
+    const firstKey = CACHE.keys().next().value;
+    if (firstKey !== undefined) CACHE.delete(firstKey);
+  }
+  CACHE.set(cacheKey, out);
+  return out;
 }
 
 /** Great-circle distance in km between two lat/lon pairs (haversine). */
