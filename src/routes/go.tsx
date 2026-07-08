@@ -221,20 +221,30 @@ export function GoView({
     );
   }
 
-  // auto mode
+  // auto mode — brief "Redirecting to <Partner>…" screen
   return (
     <main className="grid min-h-[100svh] place-items-center bg-background p-6">
-      <noscript>
-        <a href={result.url}>Continue to {result.providerName}</a>
-      </noscript>
-      <a
-        data-testid="continue-link"
-        href={result.url}
-        rel="noopener noreferrer"
-        className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+      <div
+        data-testid="go-loading"
+        className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-soft"
       >
-        If you're not redirected automatically, continue to {result.providerName}.
-      </a>
+        <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
+        <h1 className="text-xl font-bold">Redirecting to {result.providerName}…</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Comparing options and opening the best match on {result.providerName}.
+        </p>
+        <noscript>
+          <a href={result.url}>Continue to {result.providerName}</a>
+        </noscript>
+        <a
+          data-testid="continue-link"
+          href={result.url}
+          rel="noopener noreferrer"
+          className="mt-6 inline-block text-xs text-muted-foreground underline-offset-4 hover:underline"
+        >
+          Not redirected? Continue to {result.providerName}.
+        </a>
+      </div>
     </main>
   );
 }
