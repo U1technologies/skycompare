@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
-import { ExternalLink, AlertTriangle, ShieldCheck } from "lucide-react";
+import { ExternalLink, AlertTriangle, ShieldCheck, Loader2 } from "lucide-react";
 import { HOTEL_PROVIDERS, FLIGHT_PROVIDERS } from "@/lib/affiliates";
 import { goSchema, type GoParams } from "@/lib/go-schema";
 import { REDIRECT_MODE } from "@/lib/affiliate-config";
