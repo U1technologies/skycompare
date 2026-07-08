@@ -257,7 +257,9 @@ function GoPage() {
     if (!result.ok) return;
     if (REDIRECT_MODE !== "auto") return;
     if (typeof window === "undefined") return;
-    window.location.replace(result.url);
+    // Brief pause so the "Redirecting to <Partner>…" screen is actually visible.
+    const id = window.setTimeout(() => window.location.replace(result.url), 900);
+    return () => window.clearTimeout(id);
   }, [result]);
 
   return <GoView result={result} mode={REDIRECT_MODE} />;
