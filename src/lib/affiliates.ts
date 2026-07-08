@@ -196,7 +196,6 @@ export const FLIGHT_PROVIDERS: (Provider & { build: (s: FlightSearch) => string 
       return `https://www.priceline.com/m/fly/search/${path}/?cabin-class=${s.cabin}&num-adults=${s.travellers}`;
     },
   },
-  },
 ];
 
 export function openAffiliate(url: string) {
