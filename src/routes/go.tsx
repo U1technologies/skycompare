@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo } from "react";
-import { ExternalLink, AlertTriangle, ShieldCheck } from "lucide-react";
+import { ExternalLink, AlertTriangle, ShieldCheck, Loader2 } from "lucide-react";
 import { HOTEL_PROVIDERS, FLIGHT_PROVIDERS } from "@/lib/affiliates";
 import { goSchema, type GoParams } from "@/lib/go-schema";
 import { REDIRECT_MODE } from "@/lib/affiliate-config";
@@ -221,20 +221,30 @@ export function GoView({
     );
   }
 
-  // auto mode
+  // auto mode — brief "Redirecting to <Partner>…" screen
   return (
     <main className="grid min-h-[100svh] place-items-center bg-background p-6">
-      <noscript>
-        <a href={result.url}>Continue to {result.providerName}</a>
-      </noscript>
-      <a
-        data-testid="continue-link"
-        href={result.url}
-        rel="noopener noreferrer"
-        className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+      <div
+        data-testid="go-loading"
+        className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-soft"
       >
-        If you're not redirected automatically, continue to {result.providerName}.
-      </a>
+        <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
+        <h1 className="text-xl font-bold">Redirecting to {result.providerName}…</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Comparing options and opening the best match on {result.providerName}.
+        </p>
+        <noscript>
+          <a href={result.url}>Continue to {result.providerName}</a>
+        </noscript>
+        <a
+          data-testid="continue-link"
+          href={result.url}
+          rel="noopener noreferrer"
+          className="mt-6 inline-block text-xs text-muted-foreground underline-offset-4 hover:underline"
+        >
+          Not redirected? Continue to {result.providerName}.
+        </a>
+      </div>
     </main>
   );
 }
@@ -247,7 +257,9 @@ function GoPage() {
     if (!result.ok) return;
     if (REDIRECT_MODE !== "auto") return;
     if (typeof window === "undefined") return;
-    window.location.replace(result.url);
+    // Brief pause so the "Redirecting to <Partner>…" screen is actually visible.
+    const id = window.setTimeout(() => window.location.replace(result.url), 900);
+    return () => window.clearTimeout(id);
   }, [result]);
 
   return <GoView result={result} mode={REDIRECT_MODE} />;

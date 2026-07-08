@@ -261,6 +261,43 @@ function Field({
 const inputClass =
   "border-0 bg-transparent p-0 text-base font-semibold shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-8";
 
+function ProviderPicker({
+  label,
+  providers,
+  value,
+  onChange,
+}: {
+  label: string;
+  providers: { id: string; name: string }[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </span>
+      {providers.map((p) => {
+        const active = p.id === value;
+        return (
+          <button
+            key={p.id}
+            type="button"
+            onClick={() => onChange(p.id)}
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+              active
+                ? "bg-gradient-brand text-primary-foreground shadow-brand"
+                : "bg-background text-foreground/70 ring-1 ring-border hover:text-primary"
+            }`}
+          >
+            {p.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function HotelForm() {
   const [s, setS] = useState<HotelSearch>({
     destination: "",
@@ -270,6 +307,7 @@ function HotelForm() {
     adults: 2,
     children: 0,
   });
+  const [provider, setProvider] = useState<string>(DEFAULT_HOTEL_PROVIDER_ID);
 
   const handleSearch = () => {
     if (!s.destination.trim()) {
@@ -280,36 +318,44 @@ function HotelForm() {
       toast.error("Check-out must be after check-in");
       return;
     }
-    const p = HOTEL_PROVIDERS.find((x) => x.id === DEFAULT_HOTEL_PROVIDER_ID) ?? HOTEL_PROVIDERS[0];
+    const p = HOTEL_PROVIDERS.find((x) => x.id === provider) ?? HOTEL_PROVIDERS[0];
     openRedirect(buildHotelRedirect(p.id, s));
   };
 
   return (
-    <div className="grid gap-2 md:grid-cols-6">
-      <Field label="Destination" icon={<MapPin className="h-3 w-3" />} className="md:col-span-2">
-        <DestinationAutocomplete
-          value={s.destination}
-          onChange={(v) => setS({ ...s, destination: v })}
-          kinds={["city", "hotel", "airport"]}
-          placeholder="City, hotel or airport"
-        />
-      </Field>
-      <Field label="Check-in" icon={<CalendarDays className="h-3 w-3" />}>
-        <Input type="date" className={inputClass} value={s.checkIn} onChange={(e) => setS({ ...s, checkIn: e.target.value })} />
-      </Field>
-      <Field label="Check-out" icon={<CalendarDays className="h-3 w-3" />}>
-        <Input type="date" className={inputClass} value={s.checkOut} onChange={(e) => setS({ ...s, checkOut: e.target.value })} />
-      </Field>
-      <Field label="Guests" icon={<Users className="h-3 w-3" />}>
-        <div className="flex items-center gap-1 text-sm font-semibold">
-          <NumSelect value={s.rooms} onChange={(v) => setS({ ...s, rooms: v })} max={6} suffix="rm" />
-          <NumSelect value={s.adults} onChange={(v) => setS({ ...s, adults: v })} max={8} suffix="ad" />
-          <NumSelect value={s.children} onChange={(v) => setS({ ...s, children: v })} max={6} suffix="ch" min={0} />
-        </div>
-      </Field>
-      <Button onClick={handleSearch} className="h-full min-h-14 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95">
-        <Search className="mr-2 h-5 w-5" /> Search
-      </Button>
+    <div className="space-y-3">
+      <div className="grid gap-2 md:grid-cols-6">
+        <Field label="Destination" icon={<MapPin className="h-3 w-3" />} className="md:col-span-2">
+          <DestinationAutocomplete
+            value={s.destination}
+            onChange={(v) => setS({ ...s, destination: v })}
+            kinds={["city", "hotel", "airport"]}
+            placeholder="City, hotel or airport"
+          />
+        </Field>
+        <Field label="Check-in" icon={<CalendarDays className="h-3 w-3" />}>
+          <Input type="date" className={inputClass} value={s.checkIn} onChange={(e) => setS({ ...s, checkIn: e.target.value })} />
+        </Field>
+        <Field label="Check-out" icon={<CalendarDays className="h-3 w-3" />}>
+          <Input type="date" className={inputClass} value={s.checkOut} onChange={(e) => setS({ ...s, checkOut: e.target.value })} />
+        </Field>
+        <Field label="Guests" icon={<Users className="h-3 w-3" />}>
+          <div className="flex items-center gap-1 text-sm font-semibold">
+            <NumSelect value={s.rooms} onChange={(v) => setS({ ...s, rooms: v })} max={6} suffix="rm" />
+            <NumSelect value={s.adults} onChange={(v) => setS({ ...s, adults: v })} max={8} suffix="ad" />
+            <NumSelect value={s.children} onChange={(v) => setS({ ...s, children: v })} max={6} suffix="ch" min={0} />
+          </div>
+        </Field>
+        <Button onClick={handleSearch} className="h-full min-h-14 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95">
+          <Search className="mr-2 h-5 w-5" /> Search
+        </Button>
+      </div>
+      <ProviderPicker
+        label="Redirect to:"
+        providers={HOTEL_PROVIDERS}
+        value={provider}
+        onChange={setProvider}
+      />
     </div>
   );
 }
@@ -324,13 +370,14 @@ function FlightForm() {
     travellers: 1,
     cabin: "economy",
   });
+  const [provider, setProvider] = useState<string>(DEFAULT_FLIGHT_PROVIDER_ID);
 
   const handleSearch = () => {
     if (!s.from.trim() || !s.to.trim()) {
       toast.error("Enter both From and To airports");
       return;
     }
-    const p = FLIGHT_PROVIDERS.find((x) => x.id === DEFAULT_FLIGHT_PROVIDER_ID) ?? FLIGHT_PROVIDERS[0];
+    const p = FLIGHT_PROVIDERS.find((x) => x.id === provider) ?? FLIGHT_PROVIDERS[0];
     openRedirect(buildFlightRedirect(p.id, s));
   };
 
@@ -401,6 +448,12 @@ function FlightForm() {
           <Search className="mr-2 h-5 w-5" /> Search
         </Button>
       </div>
+      <ProviderPicker
+        label="Redirect to:"
+        providers={FLIGHT_PROVIDERS}
+        value={provider}
+        onChange={setProvider}
+      />
     </div>
   );
 }
