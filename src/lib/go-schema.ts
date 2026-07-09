@@ -40,23 +40,26 @@ export const hotelGoSchema = z
     path: ["checkOut"],
   });
 
+// Extract a 3-letter IATA code from free-form input like "New York (JFK)",
+// "jfk", or "JFK - John F Kennedy". Falls back to the trimmed uppercase text
+// so partners that accept city names (Expedia/KAYAK city search) still work.
+const toIata = (raw: string): string => {
+  const v = raw.trim();
+  if (!v) return v;
+  const paren = v.match(/\(([A-Za-z]{3})\)/);
+  if (paren) return paren[1].toUpperCase();
+  const bare = v.match(/\b([A-Za-z]{3})\b/);
+  if (bare && v.length <= 6) return bare[1].toUpperCase();
+  return v.toUpperCase();
+};
+
 export const flightGoSchema = z
   .object({
     type: z.literal("flight"),
     provider: z.string().min(1, "Missing provider"),
     tripType: z.enum(["one-way", "round-trip"]).default("round-trip"),
-    from: z
-      .string()
-      .trim()
-      .min(1, "Missing From airport")
-      .max(100)
-      .transform((v) => v.toUpperCase()),
-    to: z
-      .string()
-      .trim()
-      .min(1, "Missing To airport")
-      .max(100)
-      .transform((v) => v.toUpperCase()),
+    from: z.string().trim().min(1, "Missing From airport").max(100).transform(toIata),
+    to: z.string().trim().min(1, "Missing To airport").max(100).transform(toIata),
     depart: isoDate,
     return: isoDate.optional().or(z.literal("").transform(() => undefined)),
     travellers: intFromString(1, 9, 1),
@@ -66,6 +69,7 @@ export const flightGoSchema = z
     message: "Return must be after departure",
     path: ["return"],
   });
+
 
 export const goSchema = z.union([hotelGoSchema, flightGoSchema]);
 

@@ -136,8 +136,8 @@ export const FLIGHT_PROVIDERS: (Provider & { build: (s: FlightSearch) => string 
     domain: "kayak.com",
     // KAYAK flights: /flights/<FROM>-<TO>/<depart>[/<return>]/<pax>adults
     build: (s) => {
-      const from = s.from.toUpperCase();
-      const to = s.to.toUpperCase();
+      const from = enc(s.from.toUpperCase());
+      const to = enc(s.to.toUpperCase());
       const legs =
         s.tripType === "round-trip" && s.return
           ? `${from}-${to}/${s.depart}/${s.return}`
@@ -154,8 +154,10 @@ export const FLIGHT_PROVIDERS: (Provider & { build: (s: FlightSearch) => string 
       const d = s.depart.replaceAll("-", "").slice(2);
       const r = s.return ? s.return.replaceAll("-", "").slice(2) : "";
       const tail = s.tripType === "round-trip" && r ? `/${r}` : "";
+      const from = enc(s.from.toLowerCase());
+      const to = enc(s.to.toLowerCase());
       return (
-        `https://www.skyscanner.com/transport/flights/${s.from.toLowerCase()}/${s.to.toLowerCase()}/${d}${tail}/` +
+        `https://www.skyscanner.com/transport/flights/${from}/${to}/${d}${tail}/` +
         `?adultsv2=${s.travellers}&cabinclass=${skyCabin(s.cabin)}&rtn=${s.tripType === "round-trip" ? 1 : 0}`
       );
     },
@@ -165,7 +167,6 @@ export const FLIGHT_PROVIDERS: (Provider & { build: (s: FlightSearch) => string 
     name: "Expedia",
     domain: "expedia.com",
     // Expedia Flights-Search: legN uses `from:X,to:Y,departure:YYYY-MM-DDTANYT`.
-    // The TANYT suffix (time-any) is what makes Expedia pre-fill the date.
     build: (s) => {
       const trip = s.tripType === "round-trip" ? "roundtrip" : "oneway";
       const leg1 = `from:${s.from},to:${s.to},departure:${s.depart}TANYT`;
@@ -187,8 +188,8 @@ export const FLIGHT_PROVIDERS: (Provider & { build: (s: FlightSearch) => string 
     domain: "priceline.com",
     // Priceline mobile flight search: /m/fly/search/<FROM>-<TO>-<depart>[/<return>]
     build: (s) => {
-      const from = s.from.toUpperCase();
-      const to = s.to.toUpperCase();
+      const from = enc(s.from.toUpperCase());
+      const to = enc(s.to.toUpperCase());
       const path =
         s.tripType === "round-trip" && s.return
           ? `${from}-${to}-${s.depart}/${s.return}`
@@ -197,6 +198,7 @@ export const FLIGHT_PROVIDERS: (Provider & { build: (s: FlightSearch) => string 
     },
   },
 ];
+
 
 export function openAffiliate(url: string) {
   if (typeof window !== "undefined") window.open(url, "_blank", "noopener,noreferrer");
