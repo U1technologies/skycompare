@@ -39,11 +39,16 @@ describe("hotel affiliate links", () => {
       expect(url).toMatch(new RegExp(`${HOTEL.rooms}`));
     });
 
-    it(`${provider.name}: URI-encodes the destination`, () => {
+    it(`${provider.name}: safely encodes the destination`, () => {
       const url = provider.build({ ...HOTEL, destination: "Rio de Janeiro, Brazil" });
-      // Spaces & commas must be percent-encoded in the query string (not raw).
-      expect(url).not.toMatch(/[?&][^=]+=Rio de Janeiro/);
-      expect(url.toLowerCase()).toContain("rio%20de%20janeiro");
+      // Raw spaces are never allowed in a URL.
+      expect(url).not.toContain(" ");
+      // Destination must survive in either percent-encoded query form
+      // or a URL-safe path slug (KAYAK uses positional path segments).
+      const lower = url.toLowerCase();
+      expect(
+        lower.includes("rio%20de%20janeiro") || lower.includes("rio-de-janeiro"),
+      ).toBe(true);
     });
   }
 });

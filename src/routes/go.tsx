@@ -1,19 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo } from "react";
-import { ExternalLink, AlertTriangle, ShieldCheck, Loader2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ExternalLink, AlertTriangle, ShieldCheck, Plane } from "lucide-react";
 import { HOTEL_PROVIDERS, FLIGHT_PROVIDERS } from "@/lib/affiliates";
 import { goSchema, type GoParams } from "@/lib/go-schema";
-import { REDIRECT_MODE } from "@/lib/affiliate-config";
+import { REDIRECT_MODE, AUTO_REDIRECT_DELAY_MS } from "@/lib/affiliate-config";
 import { Button } from "@/components/ui/button";
 
 /**
  * Dedicated affiliate redirect handler.
  *
- * Behaviour is driven by REDIRECT_MODE (src/lib/affiliate-config.ts):
- *   - "auto"    → immediately window.location.replace() to the primary partner.
- *   - "confirm" → render a "Continue to <Partner>" screen with alternatives.
- * If link generation fails, always show a friendly error page with a
- * fallback partner link.
+ * Every /go query param is re-validated with zod and re-encoded into the
+ * partner's deep-link URL, so the exact same destination / dates / travellers
+ * / rooms / cabin class survive a browser refresh, a share of the /go URL,
+ * and both "auto" and "confirm" redirect modes.
+ *
+ * If the built URL is malformed (not a valid http(s) URL) or the builder
+ * throws, we fall back to another partner and surface a clear message —
+ * we never silently open a broken link.
  */
 
 type Search = Record<string, string | undefined>;
@@ -29,7 +32,7 @@ export const Route = createFileRoute("/go")({
   },
   head: () => ({
     meta: [
-      { title: "Redirecting… — SkyCompare" },
+      { title: "Comparing partners… — SkyCompare" },
       { name: "robots", content: "noindex, nofollow" },
     ],
   }),
@@ -48,6 +51,26 @@ export type BuildOk = {
 };
 export type BuildErr = { ok: false; error: string; fallback?: Alternative };
 
+/** Runtime guard: a valid, absolute http(s) URL under 2048 chars. */
+export function isValidHttpUrl(u: string): boolean {
+  if (typeof u !== "string" || u.length === 0 || u.length > 2048) return false;
+  try {
+    const parsed = new URL(u);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function safeBuild<T>(builder: (s: T) => string, s: T): string | null {
+  try {
+    const url = builder(s);
+    return isValidHttpUrl(url) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildTargetUrl(params: Search): BuildOk | BuildErr {
   const parsed = goSchema.safeParse(params);
   if (!parsed.success) {
@@ -60,71 +83,46 @@ export function buildTargetUrl(params: Search): BuildOk | BuildErr {
     };
   }
   const data = parsed.data;
+  const pool = data.type === "hotel" ? HOTEL_PROVIDERS : FLIGHT_PROVIDERS;
 
-  try {
-    if (data.type === "hotel") {
-      const provider = HOTEL_PROVIDERS.find((p) => p.id === data.provider);
-      if (!provider) {
-        const fb = HOTEL_PROVIDERS.find((p) => p.id !== data.provider);
-        return {
-          ok: false,
-          error: `Unknown hotel provider: ${data.provider}`,
-          fallback: fb ? { id: fb.id, url: fb.build(data), providerName: fb.name } : undefined,
-        };
-      }
-      const url = provider.build(data);
-      const alternatives = HOTEL_PROVIDERS.filter((p) => p.id !== provider.id).map((p) => ({
-        id: p.id,
-        url: p.build(data),
-        providerName: p.name,
-      }));
-      return {
-        ok: true,
-        url,
-        providerName: provider.name,
-        data,
-        alternatives,
-        fallback: alternatives[0],
-      };
-    }
+  const primary = pool.find((p) => p.id === data.provider);
 
-    const provider = FLIGHT_PROVIDERS.find((p) => p.id === data.provider);
-    if (!provider) {
-      const fb = FLIGHT_PROVIDERS.find((p) => p.id !== data.provider);
-      return {
-        ok: false,
-        error: `Unknown flight provider: ${data.provider}`,
-        fallback: fb ? { id: fb.id, url: fb.build(data), providerName: fb.name } : undefined,
-      };
-    }
-    const url = provider.build(data);
-    const alternatives = FLIGHT_PROVIDERS.filter((p) => p.id !== provider.id).map((p) => ({
-      id: p.id,
-      url: p.build(data),
-      providerName: p.name,
-    }));
-    return {
-      ok: true,
-      url,
-      providerName: provider.name,
-      data,
-      alternatives,
-      fallback: alternatives[0],
-    };
-  } catch (e) {
+  // Build every provider's URL up front so alternatives / fallback are ready.
+  const built = pool
+    .map((p) => ({ id: p.id, providerName: p.name, url: safeBuild(p.build as (x: GoParams) => string, data) }))
+    .filter((x): x is Alternative => x.url !== null);
+
+  if (!primary) {
+    const fb = built.find((x) => x.id !== data.provider);
     return {
       ok: false,
-      error: `Couldn't build that link: ${e instanceof Error ? e.message : "unknown error"}`,
+      error: `Unknown ${data.type} provider: ${data.provider}`,
+      fallback: fb,
     };
   }
+
+  const primaryEntry = built.find((x) => x.id === primary.id);
+  if (!primaryEntry) {
+    // Primary produced an invalid URL — fall through to first working alt.
+    const fb = built[0];
+    return {
+      ok: false,
+      error: `We couldn't generate a valid link for ${primary.name}.`,
+      fallback: fb,
+    };
+  }
+
+  const alternatives = built.filter((x) => x.id !== primary.id);
+  return {
+    ok: true,
+    url: primaryEntry.url,
+    providerName: primary.name,
+    data,
+    alternatives,
+    fallback: alternatives[0],
+  };
 }
 
-/**
- * Pure view rendered by /go. Exported so tests can render it without the
- * router. `mode` mirrors REDIRECT_MODE; when "auto" and result is ok, the
- * caller is responsible for triggering the actual navigation (side effect
- * lives in GoPage).
- */
 export function GoView({
   result,
   mode,
@@ -221,17 +219,47 @@ export function GoView({
     );
   }
 
-  // auto mode — brief "Redirecting to <Partner>…" screen
+  return <AutoSplash result={result} />;
+}
+
+/**
+ * Rotating "comparing partners…" splash. Cycles every partner name every
+ * ~350ms so users see we're checking multiple sources, then the effect in
+ * GoPage triggers the actual redirect.
+ */
+function AutoSplash({ result }: { result: BuildOk }) {
+  const names = useMemo(
+    () => [result.providerName, ...result.alternatives.map((a) => a.providerName)],
+    [result],
+  );
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setI((n) => (n + 1) % names.length), 350);
+    return () => window.clearInterval(id);
+  }, [names.length]);
+
   return (
     <main className="grid min-h-[100svh] place-items-center bg-background p-6">
       <div
         data-testid="go-loading"
-        className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-soft"
+        className="w-full max-w-md overflow-hidden rounded-3xl border border-border bg-card p-8 text-center shadow-soft"
       >
-        <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-primary" />
-        <h1 className="text-xl font-bold">Redirecting to {result.providerName}…</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Comparing options and opening the best match on {result.providerName}.
+        <div className="relative mx-auto mb-6 h-16 w-16">
+          <div className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+          <div className="absolute inset-2 grid place-items-center rounded-full bg-gradient-brand text-primary-foreground shadow-brand">
+            <Plane className="h-6 w-6 animate-pulse" />
+          </div>
+        </div>
+        <h1 className="text-xl font-bold">Comparing partners…</h1>
+        <div
+          key={i}
+          data-testid="rotating-partner"
+          className="mt-3 animate-in fade-in slide-in-from-bottom-2 duration-300 text-sm font-semibold text-primary"
+        >
+          Checking {names[i]}
+        </div>
+        <p className="mt-4 text-xs text-muted-foreground">
+          Opening the best match in a moment…
         </p>
         <noscript>
           <a href={result.url}>Continue to {result.providerName}</a>
@@ -240,7 +268,7 @@ export function GoView({
           data-testid="continue-link"
           href={result.url}
           rel="noopener noreferrer"
-          className="mt-6 inline-block text-xs text-muted-foreground underline-offset-4 hover:underline"
+          className="mt-6 inline-block text-[11px] text-muted-foreground underline-offset-4 hover:underline"
         >
           Not redirected? Continue to {result.providerName}.
         </a>
@@ -257,8 +285,10 @@ function GoPage() {
     if (!result.ok) return;
     if (REDIRECT_MODE !== "auto") return;
     if (typeof window === "undefined") return;
-    // Brief pause so the "Redirecting to <Partner>…" screen is actually visible.
-    const id = window.setTimeout(() => window.location.replace(result.url), 900);
+    const id = window.setTimeout(
+      () => window.location.replace(result.url),
+      AUTO_REDIRECT_DELAY_MS,
+    );
     return () => window.clearTimeout(id);
   }, [result]);
 
