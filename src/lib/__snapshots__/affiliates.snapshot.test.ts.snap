@@ -1,0 +1,29 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`flight provider URL snapshots — one way > expedia-fl 1`] = `"https://www.expedia.com/Flights-Search?trip=oneway&leg1=from%3AJFK%2Cto%3ALHR%2Cdeparture%3A2026-07-10TANYT&passengers=adults:2,children:0,seniors:0,infantinlap:Y&options=cabinclass:business&mode=search"`;
+
+exports[`flight provider URL snapshots — one way > kayak 1`] = `"https://www.kayak.com/flights/JFK-LHR/2026-07-10/2adults?sort=bestflight_a&fs=cfc=business"`;
+
+exports[`flight provider URL snapshots — one way > priceline 1`] = `"https://www.priceline.com/m/fly/search/JFK-LHR-2026-07-10/?cabin-class=business&num-adults=2"`;
+
+exports[`flight provider URL snapshots — one way > skyscanner 1`] = `"https://www.skyscanner.com/transport/flights/jfk/lhr/260710/?adultsv2=2&cabinclass=business&rtn=0"`;
+
+exports[`flight provider URL snapshots — round trip > expedia-fl 1`] = `"https://www.expedia.com/Flights-Search?trip=roundtrip&leg1=from%3AJFK%2Cto%3ALHR%2Cdeparture%3A2026-07-10TANYT&leg2=from%3ALHR%2Cto%3AJFK%2Cdeparture%3A2026-07-17TANYT&passengers=adults:2,children:0,seniors:0,infantinlap:Y&options=cabinclass:business&mode=search"`;
+
+exports[`flight provider URL snapshots — round trip > kayak 1`] = `"https://www.kayak.com/flights/JFK-LHR/2026-07-10/2026-07-17/2adults?sort=bestflight_a&fs=cfc=business"`;
+
+exports[`flight provider URL snapshots — round trip > priceline 1`] = `"https://www.priceline.com/m/fly/search/JFK-LHR-2026-07-10/2026-07-17/?cabin-class=business&num-adults=2"`;
+
+exports[`flight provider URL snapshots — round trip > skyscanner 1`] = `"https://www.skyscanner.com/transport/flights/jfk/lhr/260710/260717/?adultsv2=2&cabinclass=business&rtn=1"`;
+
+exports[`hotel provider URL snapshots > agoda 1`] = `"https://www.agoda.com/search?textToSearch=Rio%20de%20Janeiro%2C%20Brazil&checkIn=2026-07-10&checkOut=2026-07-14&rooms=2&adults=3&children=1"`;
+
+exports[`hotel provider URL snapshots > booking 1`] = `"https://www.booking.com/searchresults.html?ss=Rio%20de%20Janeiro%2C%20Brazil&checkin=2026-07-10&checkout=2026-07-14&group_adults=3&group_children=1&no_rooms=2"`;
+
+exports[`hotel provider URL snapshots > expedia 1`] = `"https://www.expedia.com/Hotel-Search?destination=Rio%20de%20Janeiro%2C%20Brazil&d1=2026-07-10&startDate=2026-07-10&d2=2026-07-14&endDate=2026-07-14&rooms=2&adults=3&children=1&x_pwa=1&destinationId=&regionId=&latLong=&semdtl=&sort=RECOMMENDED&useRewards=false&destination_meta=%7B%22regionName%22%3A%22Rio%20de%20Janeiro%2C%20Brazil%22%7D&roomsAdultsChildren=adults%3A3%7Cchildren%3A1"`;
+
+exports[`hotel provider URL snapshots > hotels 1`] = `"https://www.hotels.com/Hotel-Search?destination=Rio%20de%20Janeiro%2C%20Brazil&d1=2026-07-10&startDate=2026-07-10&d2=2026-07-14&endDate=2026-07-14&rooms=2&adults=3&children=1&sort=RECOMMENDED"`;
+
+exports[`hotel provider URL snapshots > kayak-hotel 1`] = `"https://www.kayak.com/hotels/rio-de-janeiro-brazil/2026-07-10/2026-07-14/3adults/children-1?rooms=2"`;
+
+exports[`hotel provider URL snapshots > trip 1`] = `"https://www.trip.com/hotels/list?city=0&searchWord=Rio%20de%20Janeiro%2C%20Brazil&checkin=2026-07-10&checkout=2026-07-14&adult=3&children=1&crn=2"`;
