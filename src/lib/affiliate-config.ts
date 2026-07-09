@@ -17,7 +17,10 @@
 
 export type RedirectMode = "auto" | "confirm";
 
-export const REDIRECT_MODE: RedirectMode = "confirm";
+export const REDIRECT_MODE: RedirectMode = "auto";
+
+/** How long to show the rotating "comparing partners…" splash before opening. */
+export const AUTO_REDIRECT_DELAY_MS = 2200;
 
 export const DEFAULT_HOTEL_PROVIDER_ID = "booking";
 export const DEFAULT_FLIGHT_PROVIDER_ID = "kayak";
