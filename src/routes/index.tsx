@@ -118,7 +118,7 @@ function Header() {
         <a href="#top" className="flex items-center gap-2">
           <img src={logo} alt="SkyCompare" className="h-9 w-9" width={36} height={36} />
           <span className="text-lg font-bold tracking-tight text-foreground">
-            Sky<span className="text-gradient-brand">Compare</span>
+            Sky<span className="text-gradient-brand">Finder</span>
           </span>
         </a>
         <nav className="hidden items-center gap-1 md:flex">
