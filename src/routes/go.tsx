@@ -1,9 +1,10 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { ExternalLink, AlertTriangle, ShieldCheck, Plane } from "lucide-react";
+import { ExternalLink, AlertTriangle, ShieldCheck, Plane, RefreshCw } from "lucide-react";
 import { HOTEL_PROVIDERS, FLIGHT_PROVIDERS } from "@/lib/affiliates";
 import { goSchema, type GoParams } from "@/lib/go-schema";
 import { REDIRECT_MODE, AUTO_REDIRECT_DELAY_MS } from "@/lib/affiliate-config";
+import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -14,9 +15,11 @@ import { Button } from "@/components/ui/button";
  * / rooms / cabin class survive a browser refresh, a share of the /go URL,
  * and both "auto" and "confirm" redirect modes.
  *
- * If the built URL is malformed (not a valid http(s) URL) or the builder
- * throws, we fall back to another partner and surface a clear message —
- * we never silently open a broken link.
+ * Fallback chain: if the chosen partner's builder throws or produces a
+ * malformed URL, we automatically walk the remaining partners in order and
+ * open the first one that yields a valid http(s) URL. Only when NO partner
+ * can be reached do we render the error card, showing exactly which param
+ * caused the failure and a retry button.
  */
 
 type Search = Record<string, string | undefined>;
@@ -44,12 +47,23 @@ export type Alternative = { id: string; url: string; providerName: string };
 export type BuildOk = {
   ok: true;
   url: string;
+  providerId: string;
   providerName: string;
   data: GoParams;
   fallback?: Alternative;
   alternatives: Alternative[];
+  /** Populated when the originally requested provider failed and we picked another. */
+  usedFallback?: { originalProviderId: string; fallbackProviderId: string };
 };
-export type BuildErr = { ok: false; error: string; fallback?: Alternative };
+export type BuildErr = {
+  ok: false;
+  error: string;
+  /** Which query param triggered the failure (e.g. "checkOut", "from"). */
+  paramPath?: string;
+  fallback?: Alternative;
+  /** True when zod passed but every partner URL failed validation. */
+  allProvidersFailed?: boolean;
+};
 
 /** Runtime guard: a valid, absolute http(s) URL under 2048 chars. */
 export function isValidHttpUrl(u: string): boolean {
@@ -75,60 +89,59 @@ export function buildTargetUrl(params: Search): BuildOk | BuildErr {
   const parsed = goSchema.safeParse(params);
   if (!parsed.success) {
     const first = parsed.error.issues[0];
+    const paramPath = first?.path.join(".") || "input";
     return {
       ok: false,
-      error: first
-        ? `${first.path.join(".") || "input"}: ${first.message}`
-        : "Invalid search parameters.",
+      error: first ? `${paramPath}: ${first.message}` : "Invalid search parameters.",
+      paramPath,
     };
   }
   const data = parsed.data;
   const pool = data.type === "hotel" ? HOTEL_PROVIDERS : FLIGHT_PROVIDERS;
-
-  const primary = pool.find((p) => p.id === data.provider);
 
   // Build every provider's URL up front so alternatives / fallback are ready.
   const built = pool
     .map((p) => ({ id: p.id, providerName: p.name, url: safeBuild(p.build as (x: GoParams) => string, data) }))
     .filter((x): x is Alternative => x.url !== null);
 
-  if (!primary) {
-    const fb = built.find((x) => x.id !== data.provider);
+  if (built.length === 0) {
     return {
       ok: false,
-      error: `Unknown ${data.type} provider: ${data.provider}`,
-      fallback: fb,
+      error: `We couldn't reach any partner for this ${data.type} search. Please adjust your search and try again.`,
+      allProvidersFailed: true,
     };
   }
 
-  const primaryEntry = built.find((x) => x.id === primary.id);
-  if (!primaryEntry) {
-    // Primary produced an invalid URL — fall through to first working alt.
-    const fb = built[0];
-    return {
-      ok: false,
-      error: `We couldn't generate a valid link for ${primary.name}.`,
-      fallback: fb,
-    };
-  }
+  // Prefer the requested provider, otherwise walk the pool in order (fallback chain).
+  const orderedIds = [data.provider, ...pool.map((p) => p.id).filter((id) => id !== data.provider)];
+  const chosen = orderedIds.map((id) => built.find((b) => b.id === id)).find(Boolean) as Alternative;
 
-  const alternatives = built.filter((x) => x.id !== primary.id);
+  const alternatives = built.filter((x) => x.id !== chosen.id);
+  const usedFallback =
+    chosen.id !== data.provider
+      ? { originalProviderId: data.provider, fallbackProviderId: chosen.id }
+      : undefined;
+
   return {
     ok: true,
-    url: primaryEntry.url,
-    providerName: primary.name,
+    url: chosen.url,
+    providerId: chosen.id,
+    providerName: chosen.providerName,
     data,
     alternatives,
     fallback: alternatives[0],
+    usedFallback,
   };
 }
 
 export function GoView({
   result,
   mode,
+  onRetry,
 }: {
   result: BuildOk | BuildErr;
   mode: "auto" | "confirm";
+  onRetry?: () => void;
 }) {
   if (!result.ok) {
     return (
@@ -139,13 +152,34 @@ export function GoView({
           className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center shadow-soft"
         >
           <AlertTriangle className="mx-auto mb-4 h-10 w-10 text-destructive" />
-          <h1 className="text-xl font-bold">We couldn't build that link</h1>
+          <h1 className="text-xl font-bold">
+            {result.allProvidersFailed
+              ? "No partner could be reached"
+              : "We couldn't build that link"}
+          </h1>
           <p data-testid="go-error-message" className="mt-2 text-sm text-muted-foreground">
             {result.error}
           </p>
+          {result.paramPath && (
+            <p
+              data-testid="go-error-param"
+              className="mt-3 inline-block rounded-full border border-border bg-muted px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              Problem field: {result.paramPath}
+            </p>
+          )}
           <div className="mt-6 flex flex-col gap-2">
+            {onRetry && (
+              <Button
+                data-testid="go-retry"
+                onClick={onRetry}
+                className="bg-gradient-brand text-primary-foreground shadow-brand"
+              >
+                <RefreshCw className="mr-2 h-4 w-4" /> Retry
+              </Button>
+            )}
             {result.fallback && (
-              <Button asChild className="bg-gradient-brand text-primary-foreground shadow-brand">
+              <Button asChild variant="outline">
                 <a
                   data-testid="fallback-link"
                   href={result.fallback.url}
@@ -156,7 +190,7 @@ export function GoView({
                 </a>
               </Button>
             )}
-            <Button asChild variant="outline">
+            <Button asChild variant="ghost">
               <a href="/">Back to search</a>
             </Button>
           </div>
@@ -279,18 +313,44 @@ function AutoSplash({ result }: { result: BuildOk }) {
 
 function GoPage() {
   const params = Route.useSearch();
-  const result = useMemo(() => buildTargetUrl(params), [params]);
+  const [nonce, setNonce] = useState(0);
+  const result = useMemo(() => buildTargetUrl(params), [params, nonce]);
+
+  // Emit analytics for both the success and failure branches so provider
+  // success rate and broken-format alerts stay observable end-to-end.
+  useEffect(() => {
+    if (!result.ok) {
+      track(result.allProvidersFailed ? "redirect_all_failed" : "redirect_build_failed", {
+        provider: typeof params.provider === "string" ? params.provider : undefined,
+        type: params.type as "hotel" | "flight" | undefined,
+        reason: result.error,
+        paramPath: result.paramPath,
+      });
+      return;
+    }
+    track("redirect_attempt", {
+      provider: result.providerId,
+      type: result.data.type,
+    });
+    if (result.usedFallback) {
+      track("redirect_fallback_used", {
+        provider: result.usedFallback.originalProviderId,
+        fallbackProvider: result.usedFallback.fallbackProviderId,
+        type: result.data.type,
+      });
+    }
+  }, [result, params]);
 
   useEffect(() => {
     if (!result.ok) return;
     if (REDIRECT_MODE !== "auto") return;
     if (typeof window === "undefined") return;
-    const id = window.setTimeout(
-      () => window.location.replace(result.url),
-      AUTO_REDIRECT_DELAY_MS,
-    );
+    const id = window.setTimeout(() => {
+      track("redirect_success", { provider: result.providerId, type: result.data.type });
+      window.location.replace(result.url);
+    }, AUTO_REDIRECT_DELAY_MS);
     return () => window.clearTimeout(id);
   }, [result]);
 
-  return <GoView result={result} mode={REDIRECT_MODE} />;
+  return <GoView result={result} mode={REDIRECT_MODE} onRetry={() => setNonce((n) => n + 1)} />;
 }

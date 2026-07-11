@@ -51,12 +51,12 @@ describe("/go buildTargetUrl", () => {
     expect(r.url).toContain("economy");
   });
 
-  it("returns a friendly error + fallback when the provider is unknown", () => {
+  it("falls back to the next working partner when the requested provider is unknown", () => {
     const r = buildTargetUrl({ ...baseHotel, provider: "does-not-exist" });
-    // schema restricts providers, so parse error surfaces first
-    expect(r.ok).toBe(false);
-    if (r.ok) throw new Error("unreachable");
-    expect(r.error).toBeTruthy();
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error("unreachable");
+    expect(r.usedFallback).toBeTruthy();
+    expect(r.usedFallback!.originalProviderId).toBe("does-not-exist");
   });
 
   it("returns an error when required params are missing", () => {
