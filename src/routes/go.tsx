@@ -322,9 +322,9 @@ function GoPage() {
     if (!result.ok) {
       track(result.allProvidersFailed ? "redirect_all_failed" : "redirect_build_failed", {
         provider: typeof params.provider === "string" ? params.provider : undefined,
-        type: (params.type as "hotel" | "flight" | undefined),
+        type: params.type as "hotel" | "flight" | undefined,
         reason: result.error,
-        ...(result.paramPath ? { paramPath: result.paramPath } as never : {}),
+        paramPath: result.paramPath,
       });
       return;
     }
