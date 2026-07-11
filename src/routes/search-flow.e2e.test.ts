@@ -109,14 +109,14 @@ describe("Deep-link runtime validation", () => {
     expect(isValidHttpUrl("")).toBe(false);
   });
 
-  it("returns a fallback partner when the requested provider is unknown", () => {
+  it("falls back to a working partner when the requested provider is unknown", () => {
     const goUrl = buildHotelRedirect("does-not-exist", HOTEL);
     const result = buildTargetUrl(paramsFromGoUrl(goUrl));
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error).toMatch(/Unknown hotel provider/);
-      expect(result.fallback).toBeTruthy();
-      expect(isValidHttpUrl(result.fallback!.url)).toBe(true);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.usedFallback).toBeTruthy();
+      expect(result.usedFallback!.originalProviderId).toBe("does-not-exist");
+      expect(isValidHttpUrl(result.url)).toBe(true);
     }
   });
 });
