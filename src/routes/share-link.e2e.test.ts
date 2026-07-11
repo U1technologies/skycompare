@@ -91,8 +91,11 @@ describe("share-link survival — flights", () => {
       const up = b.url.toUpperCase();
       expect(up).toContain(FLIGHT.from);
       expect(up).toContain(FLIGHT.to);
-      expect(b.url).toContain(FLIGHT.depart);
-      expect(b.url).toContain(FLIGHT.return!);
+      // Skyscanner uses YYMMDD; every other partner keeps YYYY-MM-DD.
+      const dep = provider.id === "skyscanner" ? "260910" : FLIGHT.depart;
+      const ret = provider.id === "skyscanner" ? "260924" : FLIGHT.return!;
+      expect(b.url).toContain(dep);
+      expect(b.url).toContain(ret);
       expect(b.url).toMatch(new RegExp(`${FLIGHT.travellers}`));
       // "premium" maps to skyscanner's "premiumeconomy" but the substring is preserved.
       expect(b.url.toLowerCase()).toContain("premium");
