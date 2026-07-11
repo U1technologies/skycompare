@@ -26,6 +26,8 @@ export type AnalyticsPayload = {
   type?: "hotel" | "flight";
   /** Which zod / builder param caused the failure, e.g. "checkOut". */
   reason?: string;
+  /** The failing zod path, e.g. "checkOut", "from". */
+  paramPath?: string;
   /** The provider we fell back to when the primary URL was invalid. */
   fallbackProvider?: string;
   /** Number of partners that failed to build a valid URL. */
