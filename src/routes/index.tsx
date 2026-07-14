@@ -265,7 +265,6 @@ function HotelForm() {
     adults: 2,
     children: 0,
   });
-  const [provider, setProvider] = useState<string>(DEFAULT_HOTEL_PROVIDER_ID);
 
   const handleSearch = () => {
     if (!s.destination.trim()) {
@@ -276,8 +275,7 @@ function HotelForm() {
       toast.error("Check-out must be after check-in");
       return;
     }
-    const p = HOTEL_PROVIDERS.find((x) => x.id === provider) ?? HOTEL_PROVIDERS[0];
-    openRedirect(buildHotelRedirect(p.id, s));
+    openRedirect(buildHotelRedirect(s));
   };
 
   return (
@@ -308,12 +306,6 @@ function HotelForm() {
           <Search className="mr-2 h-5 w-5" /> Search
         </Button>
       </div>
-      <ProviderPicker
-        label="Redirect to:"
-        providers={HOTEL_PROVIDERS}
-        value={provider}
-        onChange={setProvider}
-      />
     </div>
   );
 }
