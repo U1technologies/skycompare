@@ -109,7 +109,7 @@ describe("Autocomplete → /go deep-link preserves destination codes", () => {
     await user.type(input, "tokyo");
     fireEvent.click(await screen.findByTestId("suggestion-c-tok"));
 
-    const url = buildHotelRedirect("booking", {
+    const url = buildHotelRedirect({
       destination: (input as HTMLInputElement).value,
       checkIn: "2026-07-10",
       checkOut: "2026-07-14",
@@ -120,7 +120,6 @@ describe("Autocomplete → /go deep-link preserves destination codes", () => {
 
     const params = new URLSearchParams(url.split("?")[1]);
     expect(params.get("destination")).toBe("Tokyo, Japan");
-    expect(params.get("provider")).toBe("booking");
     expect(params.get("type")).toBe("hotel");
   });
 
@@ -131,7 +130,7 @@ describe("Autocomplete → /go deep-link preserves destination codes", () => {
     await user.type(input, "lhr");
     fireEvent.click(await screen.findByTestId("suggestion-a-lhr"));
 
-    const url = buildFlightRedirect("kayak", {
+    const url = buildFlightRedirect({
       tripType: "round-trip",
       from: (input as HTMLInputElement).value,
       to: "JFK",

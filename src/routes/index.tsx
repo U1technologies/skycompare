@@ -44,18 +44,12 @@ import { Toaster } from "@/components/ui/sonner";
 import heroImage from "@/assets/hero-travel.jpg";
 import logo from "@/assets/logo.png";
 import {
-  HOTEL_PROVIDERS,
-  FLIGHT_PROVIDERS,
   buildHotelRedirect,
   buildFlightRedirect,
   openRedirect,
   type HotelSearch,
   type FlightSearch,
 } from "@/lib/affiliates";
-import {
-  DEFAULT_HOTEL_PROVIDER_ID,
-  DEFAULT_FLIGHT_PROVIDER_ID,
-} from "@/lib/affiliate-config";
 import { DestinationAutocomplete } from "@/components/DestinationAutocomplete";
 
 export const Route = createFileRoute("/")({
@@ -261,42 +255,6 @@ function Field({
 const inputClass =
   "border-0 bg-transparent p-0 text-base font-semibold shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-8";
 
-function ProviderPicker({
-  label,
-  providers,
-  value,
-  onChange,
-}: {
-  label: string;
-  providers: { id: string; name: string }[];
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </span>
-      {providers.map((p) => {
-        const active = p.id === value;
-        return (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => onChange(p.id)}
-            className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
-              active
-                ? "bg-gradient-brand text-primary-foreground shadow-brand"
-                : "bg-background text-foreground/70 ring-1 ring-border hover:text-primary"
-            }`}
-          >
-            {p.name}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function HotelForm() {
   const [s, setS] = useState<HotelSearch>({
@@ -307,7 +265,6 @@ function HotelForm() {
     adults: 2,
     children: 0,
   });
-  const [provider, setProvider] = useState<string>(DEFAULT_HOTEL_PROVIDER_ID);
 
   const handleSearch = () => {
     if (!s.destination.trim()) {
@@ -318,8 +275,7 @@ function HotelForm() {
       toast.error("Check-out must be after check-in");
       return;
     }
-    const p = HOTEL_PROVIDERS.find((x) => x.id === provider) ?? HOTEL_PROVIDERS[0];
-    openRedirect(buildHotelRedirect(p.id, s));
+    openRedirect(buildHotelRedirect(s));
   };
 
   return (
@@ -350,12 +306,6 @@ function HotelForm() {
           <Search className="mr-2 h-5 w-5" /> Search
         </Button>
       </div>
-      <ProviderPicker
-        label="Redirect to:"
-        providers={HOTEL_PROVIDERS}
-        value={provider}
-        onChange={setProvider}
-      />
     </div>
   );
 }
@@ -370,15 +320,13 @@ function FlightForm() {
     travellers: 1,
     cabin: "economy",
   });
-  const [provider, setProvider] = useState<string>(DEFAULT_FLIGHT_PROVIDER_ID);
 
   const handleSearch = () => {
     if (!s.from.trim() || !s.to.trim()) {
       toast.error("Enter both From and To airports");
       return;
     }
-    const p = FLIGHT_PROVIDERS.find((x) => x.id === provider) ?? FLIGHT_PROVIDERS[0];
-    openRedirect(buildFlightRedirect(p.id, s));
+    openRedirect(buildFlightRedirect(s));
   };
 
   return (
@@ -448,12 +396,6 @@ function FlightForm() {
           <Search className="mr-2 h-5 w-5" /> Search
         </Button>
       </div>
-      <ProviderPicker
-        label="Redirect to:"
-        providers={FLIGHT_PROVIDERS}
-        value={provider}
-        onChange={setProvider}
-      />
     </div>
   );
 }
