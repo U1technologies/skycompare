@@ -320,15 +320,13 @@ function FlightForm() {
     travellers: 1,
     cabin: "economy",
   });
-  const [provider, setProvider] = useState<string>(DEFAULT_FLIGHT_PROVIDER_ID);
 
   const handleSearch = () => {
     if (!s.from.trim() || !s.to.trim()) {
       toast.error("Enter both From and To airports");
       return;
     }
-    const p = FLIGHT_PROVIDERS.find((x) => x.id === provider) ?? FLIGHT_PROVIDERS[0];
-    openRedirect(buildFlightRedirect(p.id, s));
+    openRedirect(buildFlightRedirect(s));
   };
 
   return (
@@ -398,12 +396,6 @@ function FlightForm() {
           <Search className="mr-2 h-5 w-5" /> Search
         </Button>
       </div>
-      <ProviderPicker
-        label="Redirect to:"
-        providers={FLIGHT_PROVIDERS}
-        value={provider}
-        onChange={setProvider}
-      />
     </div>
   );
 }
