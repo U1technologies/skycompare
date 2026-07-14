@@ -9,11 +9,12 @@ import { Button } from "@/components/ui/button";
 /**
  * KAYAK redirect handler.
  *
- * We call the `buildKayakRedirect` server function so the KAYAK partner id
- * (`a1aid`) is injected from process.env.KAYAK_API_KEY and never leaves the
- * server. The final URL preserves every field the user filled in
- * (destination, dates, travellers, rooms, cabin class) so KAYAK opens
- * directly on the matching results page.
+ * We call the `buildKayakRedirect` server function so the request is built
+ * from KAYAK's tracked /in redirect endpoint (deeplink code from
+ * process.env.KAYAK_DEEPLINK_CODE). The final URL preserves every field the
+ * user filled in (destination, dates, travellers, rooms, cabin class) so
+ * KAYAK opens directly on the matching results page — and logs the click
+ * against our affiliate account.
  */
 
 type Search = Record<string, string | undefined>;

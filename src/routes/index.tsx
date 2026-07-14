@@ -284,9 +284,14 @@ function HotelForm() {
         <Field label="Destination" icon={<MapPin className="h-3 w-3" />} className="md:col-span-2">
           <DestinationAutocomplete
             value={s.destination}
-            onChange={(v) => setS({ ...s, destination: v })}
+            onChange={(v) => setS({ ...s, destination: v, placeId: undefined, entityKey: undefined, lat: undefined, lon: undefined })}
+            onSelect={(d) =>
+              setS((prev) => ({ ...prev, placeId: d.placeId, entityKey: d.entityKey, lat: d.lat, lon: d.lon }))
+            }
             kinds={["city", "hotel", "airport"]}
             placeholder="City, hotel or airport"
+            apiVertical="hotels"
+            debounceMs={250}
           />
         </Field>
         <Field label="Check-in" icon={<CalendarDays className="h-3 w-3" />}>
@@ -353,6 +358,8 @@ function FlightForm() {
             kinds={["airport", "city"]}
             placeholder="JFK"
             autoUpper
+            apiVertical="flights"
+            debounceMs={250}
           />
         </Field>
         <Field label="To" icon={<Plane className="h-3 w-3 rotate-45" />}>
@@ -362,6 +369,8 @@ function FlightForm() {
             kinds={["airport", "city"]}
             placeholder="LHR"
             autoUpper
+            apiVertical="flights"
+            debounceMs={250}
           />
         </Field>
         <Field label="Departure" icon={<CalendarDays className="h-3 w-3" />}>

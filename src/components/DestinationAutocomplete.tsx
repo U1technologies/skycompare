@@ -8,10 +8,42 @@ import {
 } from "@/lib/destinations";
 import { useNearbyDestinations } from "@/lib/use-nearby-destinations";
 import { Input } from "@/components/ui/input";
+import { autocompletePlaces, type AutocompletePlace } from "@/lib/kayak-autocomplete.functions";
+
+/** KAYAK primaryPlaceType -> the icon bucket this component already renders. */
+function placeTypeToKind(primaryPlaceType: string): DestinationKind {
+  if (primaryPlaceType === "airport") return "airport";
+  if (primaryPlaceType === "hotel") return "hotel";
+  return "city";
+}
+
+function placeToDestination(p: AutocompletePlace): Destination {
+  return {
+    id: `api-${p.placeId}`,
+    kind: placeTypeToKind(p.primaryPlaceType),
+    label: p.fullName,
+    name: p.name || p.fullName,
+    region: [p.regionName, p.countryName].filter(Boolean).join(", "),
+    iata: p.iataCode,
+    lat: p.latitude,
+    lon: p.longitude,
+    placeId: p.placeId,
+    entityKey: p.entityKey,
+  };
+}
+
+/** Session-lived cache of API results, keyed by "vertical:term" — avoids
+ * re-hitting KAYAK for a term already fetched while the user backspaces. */
+const API_CACHE = new Map<string, Destination[]>();
 
 /**
  * Destination autocomplete with:
  *  - Debounced query filtering (memoized against the curated dataset)
+ *  - When `apiVertical` is set, live results from KAYAK's Autocomplete API
+ *    (see kayak-autocomplete.functions.ts) take over from the local list —
+ *    these carry KAYAK's real placeId/entityKey/lat/lng, which get threaded
+ *    through to the final deep link. Falls back to the local list if the
+ *    API is unconfigured, fails, or is still loading.
  *  - Default suggestions: nearby (via browser geolocation) → popular fallback
  *  - Keyboard navigation
  *
@@ -27,6 +59,7 @@ export function DestinationAutocomplete({
   className,
   autoUpper,
   debounceMs = 120,
+  apiVertical,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -37,10 +70,14 @@ export function DestinationAutocomplete({
   /** For flight From/To fields — display value in uppercase. */
   autoUpper?: boolean;
   debounceMs?: number;
+  /** Which KAYAK Autocomplete vertical to call live, if any. */
+  apiVertical?: "hotels" | "flights";
 }) {
   const [open, setOpen] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const [debounced, setDebounced] = useState(value);
+  const [apiResults, setApiResults] = useState<Destination[] | null>(null);
+  const fetchTokenRef = useRef(0);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Debounce the query to avoid unnecessary re-filters while typing.
@@ -55,11 +92,46 @@ export function DestinationAutocomplete({
     return nearby.length > 0 ? nearby : popularDestinations({ kinds, limit: 6 });
   }, [nearby, kinds]);
 
-  const results = useMemo<Destination[]>(() => {
+  const localResults = useMemo<Destination[]>(() => {
     const q = debounced.trim();
     if (!q) return defaults;
     return searchDestinations(q, { kinds, limit: 8 });
   }, [debounced, kinds, defaults]);
+
+  // Live KAYAK lookup — only when a vertical is wired up and the query is
+  // long enough to be worth a network round trip.
+  useEffect(() => {
+    const q = debounced.trim();
+    if (!apiVertical || q.length < 2) {
+      setApiResults(null);
+      return;
+    }
+
+    const cacheKey = `${apiVertical}:${q.toLowerCase()}`;
+    const cached = API_CACHE.get(cacheKey);
+    if (cached) {
+      setApiResults(cached);
+      return;
+    }
+
+    const token = ++fetchTokenRef.current;
+    autocompletePlaces({ data: { vertical: apiVertical, searchTerm: q } })
+      .then((res) => {
+        if (token !== fetchTokenRef.current) return; // a newer query superseded this one
+        if (!res.ok) {
+          setApiResults(null); // fall back to the local list
+          return;
+        }
+        const mapped = res.places.map(placeToDestination);
+        API_CACHE.set(cacheKey, mapped);
+        setApiResults(mapped);
+      })
+      .catch(() => {
+        if (token === fetchTokenRef.current) setApiResults(null);
+      });
+  }, [debounced, apiVertical]);
+
+  const results = apiVertical && debounced.trim() && apiResults ? apiResults : localResults;
 
   const showDefaults = !debounced.trim();
 

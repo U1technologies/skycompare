@@ -24,6 +24,15 @@ export type Destination = {
   /** Approximate coordinates for distance ranking (optional). */
   lat?: number;
   lon?: number;
+  /**
+   * KAYAK's own place identifiers — only present for results that came back
+   * from the live KAYAK Autocomplete API (see kayak-autocomplete.functions.ts),
+   * never for entries from this curated local list. Threaded through to the
+   * final deep link so KAYAK can resolve the exact place instead of a
+   * guessed slug.
+   */
+  placeId?: number;
+  entityKey?: string;
 };
 
 // prettier-ignore

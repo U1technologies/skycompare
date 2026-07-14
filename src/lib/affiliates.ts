@@ -3,9 +3,15 @@
  *
  * We deliberately keep a single partner (KAYAK) so every search on the site
  * lands on kayak.com with the same params the user filled in (destination,
- * dates, travellers, rooms, cabin class). The KAYAK Partner Network
- * tracking id (`a1aid`) is appended server-side from process.env.KAYAK_API_KEY
- * — see src/lib/kayak.functions.ts.
+ * dates, travellers, rooms, cabin class).
+ *
+ * buildKayakHotelUrl/buildKayakFlightUrl return a *relative* KAYAK path
+ * (e.g. "/hotels/paris/2026-08-01/2026-08-05/2adults"). That path gets
+ * wrapped server-side into KAYAK's tracked deep-link redirect —
+ * https://www.kayak.com/in?a=<deeplink code>&lc=en&url=<this path> —
+ * using the "Deeplink integration code" from process.env.KAYAK_DEEPLINK_CODE
+ * (Affiliate Network dashboard → Products → Text links). See
+ * src/lib/kayak.functions.ts.
  */
 
 export type HotelSearch = {
@@ -15,6 +21,17 @@ export type HotelSearch = {
   rooms: number;
   adults: number;
   children: number;
+  /**
+   * KAYAK's own place identifiers for `destination`, from the Autocomplete
+   * API (see kayak-autocomplete.functions.ts). Optional — only present when
+   * the user picked a live suggestion rather than typing free text. When
+   * present, buildKayakHotelUrl embeds them so KAYAK resolves the exact
+   * place instead of guessing from a slug.
+   */
+  placeId?: number;
+  entityKey?: string;
+  lat?: number;
+  lon?: number;
 };
 
 export type FlightSearch = {
@@ -37,15 +54,29 @@ const slug = (s: string) =>
     .replace(/^-+|-+$/g, "")
     .toLowerCase();
 
-/** KAYAK hotel deep link (no partner id — that's appended server-side). */
+/**
+ * Relative KAYAK hotel path — wrapped into a tracked /in redirect
+ * server-side. When placeId/entityKey/lat/lon are present (the user picked
+ * a live Autocomplete suggestion rather than typing free text), they're
+ * appended so KAYAK resolves the exact place instead of guessing from a slug.
+ */
 export function buildKayakHotelUrl(s: HotelSearch): string {
   const place = slug(s.destination) || "anywhere";
   const guests = `${s.adults}adults${s.children > 0 ? `-${s.children}children` : ""}`;
-  const rooms = s.rooms > 1 ? `?rooms=${s.rooms}` : "";
-  return `https://www.kayak.com/hotels/${place}/${s.checkIn}/${s.checkOut}/${guests}${rooms}`;
+  const path = `/hotels/${place}/${s.checkIn}/${s.checkOut}/${guests}`;
+
+  const params = new URLSearchParams();
+  if (s.rooms > 1) params.set("rooms", String(s.rooms));
+  if (s.placeId != null) params.set("placeId", String(s.placeId));
+  if (s.lat != null) params.set("latitude", String(s.lat));
+  if (s.lon != null) params.set("longitude", String(s.lon));
+  if (s.entityKey) params.set("entityKey", s.entityKey);
+
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
 }
 
-/** KAYAK flight deep link. Cabin class passed via `fs=cfc=<class>`. */
+/** Relative KAYAK flight path. Cabin class passed via `fs=cfc=<class>`. */
 export function buildKayakFlightUrl(s: FlightSearch): string {
   const from = enc(s.from.toUpperCase());
   const to = enc(s.to.toUpperCase());
@@ -53,13 +84,14 @@ export function buildKayakFlightUrl(s: FlightSearch): string {
     s.tripType === "round-trip" && s.return
       ? `${from}-${to}/${s.depart}/${s.return}`
       : `${from}-${to}/${s.depart}`;
-  return `https://www.kayak.com/flights/${legs}/${s.travellers}adults?sort=bestflight_a&fs=cfc=${s.cabin}`;
+  return `/flights/${legs}/${s.travellers}adults?sort=bestflight_a&fs=cfc=${s.cabin}`;
 }
 
 /**
  * Build a URL to our internal /go redirect handler, preserving every search
  * parameter as safely-encoded query string values. The /go route re-validates
- * the params server-side and appends the KAYAK partner id before redirecting.
+ * the params server-side and wraps the result in KAYAK's tracked /in redirect
+ * before sending the browser onward.
  */
 function toQuery(obj: Record<string, string | number | undefined>) {
   const p = new URLSearchParams();
