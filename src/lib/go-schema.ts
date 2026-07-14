@@ -4,7 +4,6 @@
  * All /go query params flow through these schemas so we get:
  *  - guaranteed types before building affiliate deep-links
  *  - safe encoding (numbers are actually numbers, dates match ISO shape)
- *  - a single source of truth reused by unit tests
  */
 
 import { z } from "zod";
@@ -27,7 +26,6 @@ const intFromString = (min: number, max: number, fallback: number) =>
 export const hotelGoSchema = z
   .object({
     type: z.literal("hotel"),
-    provider: z.string().min(1, "Missing provider"),
     destination: z.string().trim().min(1, "Missing destination").max(200),
     checkIn: isoDate,
     checkOut: isoDate,
@@ -42,7 +40,7 @@ export const hotelGoSchema = z
 
 // Extract a 3-letter IATA code from free-form input like "New York (JFK)",
 // "jfk", or "JFK - John F Kennedy". Falls back to the trimmed uppercase text
-// so partners that accept city names (Expedia/KAYAK city search) still work.
+// so city-name searches still work.
 const toIata = (raw: string): string => {
   const v = raw.trim();
   if (!v) return v;
@@ -56,7 +54,6 @@ const toIata = (raw: string): string => {
 export const flightGoSchema = z
   .object({
     type: z.literal("flight"),
-    provider: z.string().min(1, "Missing provider"),
     tripType: z.enum(["one-way", "round-trip"]).default("round-trip"),
     from: z.string().trim().min(1, "Missing From airport").max(100).transform(toIata),
     to: z.string().trim().min(1, "Missing To airport").max(100).transform(toIata),
@@ -65,11 +62,10 @@ export const flightGoSchema = z
     travellers: intFromString(1, 9, 1),
     cabin: z.enum(["economy", "premium", "business", "first"]).default("economy"),
   })
-  .refine((s) => s.tripType === "one-way" || (!!s.return && new Date(s.return) > new Date(s.depart)), {
-    message: "Return must be after departure",
-    path: ["return"],
-  });
-
+  .refine(
+    (s) => s.tripType === "one-way" || (!!s.return && new Date(s.return) > new Date(s.depart)),
+    { message: "Return must be after departure", path: ["return"] },
+  );
 
 export const goSchema = z.union([hotelGoSchema, flightGoSchema]);
 
