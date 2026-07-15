@@ -110,6 +110,24 @@ export function buildFlightRedirect(s: FlightSearch) {
   return `/go?${toQuery({ type: "flight", ...s })}`;
 }
 
+/**
+ * Build a shareable link to the homepage itself, pre-filled with this
+ * search (destination, dates, guests, and — for hotels — the resolved
+ * placeId/entityKey/lat/lon if the user picked a live Autocomplete
+ * suggestion). Anyone who opens the link lands with the form already
+ * filled in; every field but destination/from+to is optional and defaults
+ * sensibly if omitted. Unlike buildHotelRedirect/buildFlightRedirect (which
+ * point at /go and immediately redirect to KAYAK), this points at `/` so
+ * the recipient sees the search form itself before deciding to search.
+ */
+export function buildHotelShareLink(s: HotelSearch) {
+  return `/?${toQuery({ type: "hotel", ...s })}`;
+}
+
+export function buildFlightShareLink(s: FlightSearch) {
+  return `/?${toQuery({ type: "flight", ...s })}`;
+}
+
 export function openRedirect(url: string) {
   if (typeof window !== "undefined") window.location.assign(url);
 }

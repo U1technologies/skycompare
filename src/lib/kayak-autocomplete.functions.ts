@@ -58,7 +58,7 @@ export function toPlace(raw: Record<string, unknown>): AutocompletePlace {
 }
 
 export const autocompletePlaces = createServerFn({ method: "GET" })
-  .inputValidator((input: Record<string, unknown>) => input)
+  .validator((input: Record<string, unknown>) => input)
   .handler(async ({ data }): Promise<AutocompleteResult> => {
     const parsed = inputSchema.safeParse(data);
     if (!parsed.success) {

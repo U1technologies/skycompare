@@ -24,7 +24,7 @@ export type BuildKayakResult =
   | { ok: false; error: string; paramPath?: string };
 
 export const buildKayakRedirect = createServerFn({ method: "GET" })
-  .inputValidator((input: Record<string, unknown>) => input)
+  .validator((input: Record<string, unknown>) => input)
   .handler(async ({ data }): Promise<BuildKayakResult> => {
     const parsed = goSchema.safeParse(data);
     if (!parsed.success) {

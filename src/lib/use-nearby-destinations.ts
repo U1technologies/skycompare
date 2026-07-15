@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { nearestDestinations, type Destination, type SearchOptions } from "@/lib/destinations";
 
 /**
@@ -28,6 +28,14 @@ export function useNearbyDestinations(opts: SearchOptions = {}): Destination[] {
     };
   }, []);
 
-  if (!coords) return [];
-  return nearestDestinations(coords.lat, coords.lon, opts);
+  // Memoized on primitive values (not the `opts`/`opts.kinds` object identity,
+  // which callers commonly recreate every render) so this returns a stable
+  // array reference across unrelated re-renders — callers depend on that
+  // stability (e.g. resetting keyboard/hover highlight only when it changes).
+  const kindsKey = opts.kinds?.join(",") ?? "";
+  return useMemo(() => {
+    if (!coords) return [];
+    return nearestDestinations(coords.lat, coords.lon, opts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coords, kindsKey, opts.limit]);
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MapPin, Plane, Building2, Compass, Star } from "lucide-react";
 import {
   searchDestinations,
@@ -7,6 +8,7 @@ import {
   type DestinationKind,
 } from "@/lib/destinations";
 import { useNearbyDestinations } from "@/lib/use-nearby-destinations";
+import { useAnchoredMenuPosition } from "@/hooks/use-anchored-menu-position";
 import { Input } from "@/components/ui/input";
 import { autocompletePlaces, type AutocompletePlace } from "@/lib/kayak-autocomplete.functions";
 
@@ -79,6 +81,7 @@ export function DestinationAutocomplete({
   const [apiResults, setApiResults] = useState<Destination[] | null>(null);
   const fetchTokenRef = useRef(0);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   // Debounce the query to avoid unnecessary re-filters while typing.
   useEffect(() => {
@@ -140,11 +143,16 @@ export function DestinationAutocomplete({
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      const insideRoot = rootRef.current?.contains(target);
+      const insideMenu = menuRef.current?.contains(target);
+      if (!insideRoot && !insideMenu) setOpen(false);
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
+
+  const menuPos = useAnchoredMenuPosition(open, rootRef);
 
   const pick = (d: Destination) => {
     onChange(autoUpper ? (d.iata ?? d.label) : d.label);
@@ -155,7 +163,7 @@ export function DestinationAutocomplete({
   return (
     <div ref={rootRef} className={`relative ${className ?? ""}`}>
       <Input
-        className="h-8 border-0 bg-transparent p-0 text-base font-semibold shadow-none focus-visible:ring-0 focus-visible:ring-offset-0"
+        className="h-auto border-0 bg-transparent p-0 pl-0.5 pt-0.5 text-sm font-semibold leading-normal shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-foreground/50 placeholder:font-medium"
         placeholder={placeholder}
         value={value}
         onChange={(e) => {
@@ -185,10 +193,12 @@ export function DestinationAutocomplete({
         aria-expanded={open}
         role="combobox"
       />
-      {open && results.length > 0 && (
+      {open && results.length > 0 && menuPos && createPortal(
         <div
+          ref={menuRef}
           role="listbox"
-          className="absolute left-0 right-0 top-full z-50 mt-2 max-h-72 overflow-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl"
+          style={{ position: "fixed", top: menuPos.top, left: menuPos.left, width: menuPos.width }}
+          className="z-50 max-h-72 overflow-auto rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl"
         >
           {showDefaults && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
@@ -214,7 +224,7 @@ export function DestinationAutocomplete({
               onClick={() => pick(d)}
               onMouseEnter={() => setHighlight(i)}
               className={`flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm transition ${
-                i === highlight ? "bg-accent text-accent-foreground" : "hover:bg-accent/60"
+                i === highlight ? "bg-accent text-accent-foreground" : ""
               }`}
             >
               <KindIcon kind={d.kind} />
@@ -230,7 +240,8 @@ export function DestinationAutocomplete({
               </span>
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

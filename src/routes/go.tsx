@@ -33,7 +33,7 @@ export const Route = createFileRoute("/go")({
   },
   head: () => ({
     meta: [
-      { title: "Redirecting to KAYAK… — SkyCompare" },
+      { title: "Redirecting to KAYAK… — HotelzOff" },
       { name: "robots", content: "noindex, nofollow" },
     ],
   }),

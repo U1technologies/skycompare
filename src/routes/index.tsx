@@ -1,5 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 import {
   Plane,
@@ -8,6 +9,8 @@ import {
   CalendarDays,
   Users,
   Search,
+  Plus,
+  Minus,
   ShieldCheck,
   Sparkles,
   Zap,
@@ -20,6 +23,7 @@ import {
   Facebook,
   Instagram,
   Youtube,
+  Copy,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -43,25 +47,51 @@ import { Toaster } from "@/components/ui/sonner";
 
 import heroImage from "@/assets/hero-travel.jpg";
 import logo from "@/assets/logo.png";
+import bookingLogo from "@/assets/partners/booking.svg";
+import expediaLogo from "@/assets/partners/expedia.svg";
+import hotelsComLogo from "@/assets/partners/hotels-com.svg";
+import kayakLogo from "@/assets/partners/kayak.svg";
+import skyscannerLogo from "@/assets/partners/skyscanner.svg";
+import tripComLogo from "@/assets/partners/trip-com.svg";
 import {
   buildHotelRedirect,
   buildFlightRedirect,
+  buildHotelShareLink,
+  buildFlightShareLink,
   openRedirect,
   type HotelSearch,
   type FlightSearch,
 } from "@/lib/affiliates";
 import { DestinationAutocomplete } from "@/components/DestinationAutocomplete";
+import { useAnchoredMenuPosition } from "@/hooks/use-anchored-menu-position";
+import { Header, Footer } from "@/components/SharedLayout";
+
+/**
+ * Optional deep-link params (?type=hotel&destination=Goa&checkIn=...) so a
+ * marketing link can land here with the search form pre-filled. Loosely
+ * typed on purpose — HotelForm/FlightForm parse whatever's present and
+ * default the rest, they never fail the whole page over a bad param.
+ */
+export type IndexSearch = Record<string, string | undefined>;
 
 export const Route = createFileRoute("/")({
+  validateSearch: (s: Record<string, unknown>): IndexSearch => {
+    const out: IndexSearch = {};
+    for (const [k, v] of Object.entries(s)) {
+      if (v == null) continue;
+      out[k] = String(v);
+    }
+    return out;
+  },
   head: () => ({
     meta: [
-      { title: "SkyCompare — Compare Hotel & Flight Prices from Top Travel Brands" },
+      { title: "HotelzOff — Compare Hotel & Flight Prices from Top Travel Brands" },
       {
         name: "description",
         content:
           "Compare hotel and flight prices from KAYAK, Booking.com, Agoda, Expedia and more. Find the best deals and book with trusted travel partners.",
       },
-      { property: "og:title", content: "SkyCompare — Compare Hotel & Flight Prices" },
+      { property: "og:title", content: "HotelzOff — Compare Hotel & Flight Prices" },
       {
         property: "og:description",
         content: "Find the best deals from trusted travel partners worldwide.",
@@ -80,14 +110,73 @@ const addDays = (n: number) => {
   return d.toISOString().slice(0, 10);
 };
 
+function pickString(params: IndexSearch, key: string): string | undefined {
+  const v = params[key];
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
+}
+function pickIsoDate(params: IndexSearch, key: string): string | undefined {
+  const v = pickString(params, key);
+  return v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(v).getTime()) ? v : undefined;
+}
+function pickInt(params: IndexSearch, key: string, min: number, max: number): number | undefined {
+  const v = pickString(params, key);
+  if (!v) return undefined;
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : undefined;
+}
+
+function pickFloat(params: IndexSearch, key: string): number | undefined {
+  const v = pickString(params, key);
+  if (!v) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Best-effort pre-fill from deep-link params — takes whatever's present and
+ * valid, defaults the rest. Never fails the page over one bad field.
+ * placeId/entityKey/lat/lon round-trip a share link's resolved KAYAK place
+ * (see buildHotelShareLink) so the eventual /go redirect stays precise
+ * instead of falling back to a guessed slug. */
+function initialHotelSearch(params: IndexSearch): HotelSearch {
+  return {
+    destination: pickString(params, "destination") ?? "",
+    checkIn: pickIsoDate(params, "checkIn") ?? today(),
+    checkOut: pickIsoDate(params, "checkOut") ?? addDays(3),
+    rooms: pickInt(params, "rooms", 1, 8) ?? 1,
+    adults: pickInt(params, "adults", 1, 16) ?? 2,
+    children: pickInt(params, "children", 0, 8) ?? 0,
+    placeId: pickInt(params, "placeId", 0, Number.MAX_SAFE_INTEGER),
+    entityKey: pickString(params, "entityKey"),
+    lat: pickFloat(params, "lat"),
+    lon: pickFloat(params, "lon"),
+  };
+}
+
+function initialFlightSearch(params: IndexSearch): FlightSearch {
+  const tripType = params.tripType === "one-way" ? "one-way" : "round-trip";
+  const cabinValues: FlightSearch["cabin"][] = ["economy", "premium", "business", "first"];
+  const cabin = cabinValues.includes(params.cabin as FlightSearch["cabin"])
+    ? (params.cabin as FlightSearch["cabin"])
+    : "economy";
+  return {
+    tripType,
+    from: (pickString(params, "from") ?? "").toUpperCase(),
+    to: (pickString(params, "to") ?? "").toUpperCase(),
+    depart: pickIsoDate(params, "depart") ?? today(),
+    return: tripType === "round-trip" ? (pickIsoDate(params, "return") ?? addDays(7)) : undefined,
+    travellers: pickInt(params, "travellers", 1, 9) ?? 1,
+    cabin,
+  };
+}
+
 function Index() {
+  const search = Route.useSearch();
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Toaster position="top-center" />
       <Header />
-      <Hero />
+      <Hero initialSearch={search} />
       <PartnersStrip />
-      <WhyChoose />
       <PopularDestinations />
       <Deals />
       <HowItWorks />
@@ -99,48 +188,13 @@ function Index() {
 
 /* ------------------------------ Header ------------------------------ */
 
-function Header() {
-  const nav = [
-    { label: "Hotels", href: "#search" },
-    { label: "Flights", href: "#search" },
-    { label: "Deals", href: "#deals" },
-    { label: "Contact", href: "#contact" },
-  ];
-  return (
-    <header className="fixed top-0 left-0 right-0 z-50">
-      <div className="mx-auto mt-3 flex max-w-7xl items-center justify-between rounded-2xl glass px-4 py-2.5 shadow-soft sm:mx-4 sm:px-5">
-        <a href="#top" className="flex items-center gap-2">
-          <img src={logo} alt="SkyCompare" className="h-9 w-9" width={36} height={36} />
-          <span className="text-lg font-bold tracking-tight text-foreground">
-            Sky<span className="text-gradient-brand">Finder</span>
-          </span>
-        </a>
-        <nav className="hidden items-center gap-1 md:flex">
-          {nav.map((n) => (
-            <a
-              key={n.label}
-              href={n.href}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-foreground/80 transition hover:bg-secondary hover:text-foreground"
-            >
-              {n.label}
-            </a>
-          ))}
-        </nav>
-        <Button asChild size="sm" className="bg-gradient-brand text-primary-foreground shadow-brand">
-          <a href="#search">
-            <Search className="mr-1.5 h-4 w-4" /> Search
-          </a>
-        </Button>
-      </div>
-    </header>
-  );
-}
+
 
 /* ------------------------------- Hero ------------------------------- */
 
-function Hero() {
+function Hero({ initialSearch }: { initialSearch: IndexSearch }) {
   return (
-    <section id="top" className="relative isolate w-full overflow-hidden pt-20 sm:pt-24">
+    <section id="top" className="relative isolate w-full overflow-x-hidden pt-20 sm:pt-24">
       <img
         src={heroImage}
         alt="Aerial view of a tropical island with overwater bungalows"
@@ -173,9 +227,9 @@ function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: 0.15 }}
           id="search"
-          className="mx-auto mt-6 max-w-5xl sm:mt-8"
+          className="mx-auto mt-6 max-w-6xl sm:mt-8"
         >
-          <SearchBox />
+          <SearchBox initialSearch={initialSearch} />
         </motion.div>
       </div>
     </section>
@@ -186,11 +240,17 @@ function Hero() {
 
 type Tab = "hotels" | "flights";
 
-function SearchBox() {
-  const [tab, setTab] = useState<Tab>("hotels");
+export function SearchBox({
+  initialSearch,
+  showCopyLink = false,
+}: {
+  initialSearch: IndexSearch;
+  showCopyLink?: boolean;
+}) {
+  const [tab, setTab] = useState<Tab>(initialSearch.type === "flight" ? "flights" : "hotels");
 
   return (
-    <div className="rounded-3xl glass p-3 shadow-brand sm:p-4">
+    <div className="rounded-3xl glass p-3 md:p-5 shadow-brand">
       <div className="mb-3 grid grid-cols-2 gap-1.5 rounded-2xl bg-secondary p-1">
         <TabButton active={tab === "hotels"} onClick={() => setTab("hotels")} icon={<Hotel className="h-4 w-4" />}>
           Hotels
@@ -199,7 +259,11 @@ function SearchBox() {
           Flights
         </TabButton>
       </div>
-      {tab === "hotels" ? <HotelForm /> : <FlightForm />}
+      {tab === "hotels" ? (
+        <HotelForm initial={initialSearch} showCopyLink={showCopyLink} />
+      ) : (
+        <FlightForm initial={initialSearch} showCopyLink={showCopyLink} />
+      )}
     </div>
   );
 }
@@ -218,7 +282,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+      className={`flex items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition ${
         active
           ? "bg-gradient-brand text-primary-foreground shadow-brand"
           : "text-foreground/70 hover:text-foreground"
@@ -242,8 +306,8 @@ function Field({
   className?: string;
 }) {
   return (
-    <div className={`rounded-2xl bg-background/95 p-3 ring-1 ring-border ${className ?? ""}`}>
-      <Label className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className={`flex h-[3.75rem] min-w-0 sm:h-16 flex-col justify-center overflow-visible rounded-2xl bg-background/95 px-4 ring-1 ring-border ${className ?? ""}`}>
+      <Label className="mb-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground leading-none">
         {icon}
         {label}
       </Label>
@@ -252,36 +316,40 @@ function Field({
   );
 }
 
-const inputClass =
-  "border-0 bg-transparent p-0 text-base font-semibold shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 h-8";
+const inputClass = "h-auto border-0 bg-transparent p-0 pl-0.5 pt-0.5 text-sm font-semibold leading-normal shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-foreground/50 placeholder:font-medium";
 
 
-function HotelForm() {
-  const [s, setS] = useState<HotelSearch>({
-    destination: "",
-    checkIn: today(),
-    checkOut: addDays(3),
-    rooms: 1,
-    adults: 2,
-    children: 0,
-  });
+function HotelForm({ initial, showCopyLink = false }: { initial: IndexSearch; showCopyLink?: boolean }) {
+  const [s, setS] = useState<HotelSearch>(() => initialHotelSearch(initial));
 
-  const handleSearch = () => {
+  const validate = () => {
     if (!s.destination.trim()) {
       toast.error("Please enter a destination");
-      return;
+      return false;
     }
     if (new Date(s.checkOut) <= new Date(s.checkIn)) {
       toast.error("Check-out must be after check-in");
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const handleSearch = () => {
+    if (!validate()) return;
     openRedirect(buildHotelRedirect(s));
+  };
+
+  const handleCopyLink = async () => {
+    if (!validate()) return;
+    const link = `${window.location.origin}${buildHotelShareLink(s)}`;
+    await navigator.clipboard.writeText(link);
+    toast.success("Link copied!");
   };
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 md:grid-cols-6">
-        <Field label="Destination" icon={<MapPin className="h-3 w-3" />} className="md:col-span-2">
+      <div className="grid gap-1.5 md:grid-cols-[2.6fr_1fr_1fr_1fr_0.6fr]">
+        <Field label="Destination" icon={<MapPin className="h-3 w-3" />}>
           <DestinationAutocomplete
             value={s.destination}
             onChange={(v) => setS({ ...s, destination: v, placeId: undefined, entityKey: undefined, lat: undefined, lon: undefined })}
@@ -301,37 +369,195 @@ function HotelForm() {
           <Input type="date" className={inputClass} value={s.checkOut} onChange={(e) => setS({ ...s, checkOut: e.target.value })} />
         </Field>
         <Field label="Guests" icon={<Users className="h-3 w-3" />}>
-          <div className="flex items-center gap-1 text-sm font-semibold">
-            <NumSelect value={s.rooms} onChange={(v) => setS({ ...s, rooms: v })} max={6} suffix="rm" />
-            <NumSelect value={s.adults} onChange={(v) => setS({ ...s, adults: v })} max={8} suffix="ad" />
-            <NumSelect value={s.children} onChange={(v) => setS({ ...s, children: v })} max={6} suffix="ch" min={0} />
-          </div>
+          <GuestsField
+            value={{ rooms: s.rooms, adults: s.adults, children: s.children }}
+            onChange={(v) => setS({ ...s, ...v })}
+          />
         </Field>
-        <Button onClick={handleSearch} className="h-full min-h-14 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95">
-          <Search className="mr-2 h-5 w-5" /> Search
-        </Button>
+        <div className="flex h-[3.75rem] gap-1.5 sm:h-16">
+          <Button
+            onClick={handleSearch}
+            aria-label="Search"
+            className="h-full flex-1 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95"
+          >
+            <Search className="mr-2 h-5 w-5" /> Search
+          </Button>
+          {showCopyLink && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCopyLink}
+              aria-label="Copy shareable link"
+              title="Copy shareable link"
+              className="h-full w-12 shrink-0 rounded-2xl p-0"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
 
-function FlightForm() {
-  const [s, setS] = useState<FlightSearch>({
-    tripType: "round-trip",
-    from: "",
-    to: "",
-    depart: today(),
-    return: addDays(7),
-    travellers: 1,
-    cabin: "economy",
-  });
+/* ---------------------------- Guests Field --------------------------- */
 
-  const handleSearch = () => {
+type GuestsValue = { rooms: number; adults: number; children: number };
+
+const GUESTS_LIMITS = {
+  adults: { min: 1, max: 8 },
+  children: { min: 0, max: 6 },
+  rooms: { min: 1, max: 6 },
+} as const;
+
+function GuestsField({ value, onChange }: { value: GuestsValue; onChange: (v: GuestsValue) => void }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const pos = useAnchoredMenuPosition(open, rootRef);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      const target = e.target as Node;
+      const insideRoot = rootRef.current?.contains(target);
+      const insideMenu = menuRef.current?.contains(target);
+      if (!insideRoot && !insideMenu) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  const totalGuests = value.adults + value.children;
+  const summary = `${totalGuests} guest${totalGuests === 1 ? "" : "s"}, ${value.rooms} room${value.rooms === 1 ? "" : "s"}`;
+
+  const step = (key: keyof GuestsValue, delta: number) => {
+    const { min, max } = GUESTS_LIMITS[key];
+    onChange({ ...value, [key]: Math.min(max, Math.max(min, value[key] + delta)) });
+  };
+
+  const menuWidth = pos ? Math.max(pos.width, 300) : 0;
+  const menuLeft = pos ? Math.min(pos.left, Math.max(16, window.innerWidth - menuWidth - 16)) : 0;
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="block w-full truncate text-left text-sm font-semibold leading-none"
+      >
+        {summary}
+      </button>
+      {open && pos && createPortal(
+        <div
+          ref={menuRef}
+          style={{ position: "fixed", top: pos.top, left: menuLeft, width: menuWidth }}
+          className="z-50 rounded-2xl border border-border bg-popover p-4 text-popover-foreground shadow-xl"
+        >
+          <GuestCounterRow
+            label="Adults"
+            sublabel="18+ years"
+            value={value.adults}
+            onDecrease={() => step("adults", -1)}
+            onIncrease={() => step("adults", 1)}
+          />
+          <GuestCounterRow
+            label="Children"
+            sublabel="0-17 years"
+            value={value.children}
+            onDecrease={() => step("children", -1)}
+            onIncrease={() => step("children", 1)}
+          />
+          <GuestCounterRow
+            label="Rooms"
+            sublabel="Each room should contain at least 1 adult"
+            value={value.rooms}
+            onDecrease={() => step("rooms", -1)}
+            onIncrease={() => step("rooms", 1)}
+            last
+          />
+          <div className="mt-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-sm font-semibold text-primary underline-offset-2 hover:underline"
+            >
+              Done
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
+
+function GuestCounterRow({
+  label,
+  sublabel,
+  value,
+  onDecrease,
+  onIncrease,
+  last,
+}: {
+  label: string;
+  sublabel: string;
+  value: number;
+  onDecrease: () => void;
+  onIncrease: () => void;
+  last?: boolean;
+}) {
+  return (
+    <div className={`flex items-center justify-between gap-4 py-3 ${last ? "" : "border-b border-border"}`}>
+      <div>
+        <p className="text-sm font-semibold text-foreground">{label}</p>
+        <p className="text-xs text-muted-foreground">{sublabel}</p>
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onDecrease}
+          aria-label={`Decrease ${label}`}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-foreground transition hover:bg-secondary/70"
+        >
+          <Minus className="h-4 w-4" />
+        </button>
+        <span className="w-4 text-center text-sm font-semibold">{value}</span>
+        <button
+          type="button"
+          onClick={onIncrease}
+          aria-label={`Increase ${label}`}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary text-foreground transition hover:bg-secondary/70"
+        >
+          <Plus className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function FlightForm({ initial, showCopyLink = false }: { initial: IndexSearch; showCopyLink?: boolean }) {
+  const [s, setS] = useState<FlightSearch>(() => initialFlightSearch(initial));
+
+  const validate = () => {
     if (!s.from.trim() || !s.to.trim()) {
       toast.error("Enter both From and To airports");
-      return;
+      return false;
     }
+    return true;
+  };
+
+  const handleSearch = () => {
+    if (!validate()) return;
     openRedirect(buildFlightRedirect(s));
+  };
+
+  const handleCopyLink = async () => {
+    if (!validate()) return;
+    const link = `${window.location.origin}${buildFlightShareLink(s)}`;
+    await navigator.clipboard.writeText(link);
+    toast.success("Link copied!");
   };
 
   return (
@@ -401,9 +627,23 @@ function FlightForm() {
             </Select>
           </div>
         </Field>
-        <Button onClick={handleSearch} className="h-full min-h-14 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95">
-          <Search className="mr-2 h-5 w-5" /> Search
-        </Button>
+        <div className="flex h-[3.75rem] gap-1.5 sm:h-16">
+          <Button onClick={handleSearch} className="h-full flex-1 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95">
+            <Search className="mr-2 h-5 w-5" /> Search
+          </Button>
+          {showCopyLink && (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCopyLink}
+              aria-label="Copy shareable link"
+              title="Copy shareable link"
+              className="h-full w-12 shrink-0 rounded-2xl p-0"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -427,7 +667,6 @@ function NumSelect({
     <Select value={String(value)} onValueChange={(v) => onChange(Number(v))}>
       <SelectTrigger className="h-8 w-auto gap-1 border-0 bg-transparent p-1 text-sm font-semibold shadow-none focus:ring-0">
         <SelectValue />
-        <span className="text-xs text-muted-foreground">{suffix}</span>
       </SelectTrigger>
       <SelectContent>
         {opts.map((n) => (
@@ -443,30 +682,39 @@ function NumSelect({
 /* --------------------------- Partners Strip -------------------------- */
 
 const PARTNERS = [
-  "KAYAK",
-  "Booking.com",
-  "Agoda",
-  "Expedia",
-  "Hotels.com",
-  "Trip.com",
-  "Priceline",
-  "Skyscanner",
+  { name: "KAYAK", logo: kayakLogo },
+  { name: "Booking.com", logo: bookingLogo },
+  { name: "Expedia", logo: expediaLogo },
+  { name: "Hotels.com", logo: hotelsComLogo },
+  { name: "Trip.com", logo: tripComLogo },
+  { name: "Skyscanner", logo: skyscannerLogo },
 ];
 
 function PartnersStrip() {
   return (
     <section className="border-y border-border bg-secondary/40 py-10">
-      <div className="mx-auto max-w-7xl px-4">
+      <div className="mx-auto w-full max-w-7xl px-4 overflow-hidden">
         <p className="mb-6 text-center text-xs font-semibold uppercase tracking-widest text-muted-foreground">
           Trusted Travel Partners
         </p>
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
+        
+        {/* Desktop view (md and above) */}
+        <div className="hidden md:grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
           {PARTNERS.map((p) => (
+            <div key={p.name} className="flex h-14 items-center justify-center p-3">
+              <img src={p.logo} alt={p.name} className="max-h-8 w-auto object-contain" loading="lazy" />
+            </div>
+          ))}
+        </div>
+
+        {/* Mobile view (below md) */}
+        <div className="flex w-max animate-marquee gap-4 md:hidden">
+          {[...PARTNERS, ...PARTNERS].map((p, i) => (
             <div
-              key={p}
-              className="flex h-14 items-center justify-center rounded-xl bg-background text-sm font-bold text-foreground/70 shadow-soft ring-1 ring-border transition hover:text-primary"
+              key={`${p.name}-${i}`}
+              className="flex h-14 w-32 shrink-0 items-center justify-center p-3"
             >
-              {p}
+              <img src={p.logo} alt={p.name} className="max-h-8 w-auto object-contain" loading="lazy" />
             </div>
           ))}
         </div>
@@ -486,33 +734,6 @@ const FEATURES = [
   { icon: Globe2, title: "Worldwide destinations", desc: "Over 2 million properties and 500+ airlines in 200+ countries." },
 ];
 
-function WhyChoose() {
-  return (
-    <section className="py-20">
-      <div className="mx-auto max-w-7xl px-4">
-        <SectionHead eyebrow="Why SkyCompare" title="Everything you need to travel smarter" />
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f, i) => (
-            <motion.div
-              key={f.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, margin: "-60px" }}
-              transition={{ duration: 0.4, delay: i * 0.05 }}
-              className="group rounded-3xl border border-border bg-card p-6 shadow-soft transition hover:-translate-y-1 hover:shadow-brand"
-            >
-              <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-brand text-primary-foreground shadow-brand">
-                <f.icon className="h-6 w-6" />
-              </div>
-              <h3 className="text-lg font-bold">{f.title}</h3>
-              <p className="mt-1.5 text-sm text-muted-foreground">{f.desc}</p>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 /* ------------------------- Popular Destinations ---------------------- */
 
@@ -529,7 +750,7 @@ const DESTINATIONS = [
 
 function PopularDestinations() {
   return (
-    <section className="bg-secondary/40 py-20">
+    <section className="bg-secondary/40 pt-15 pb-16">
       <div className="mx-auto max-w-7xl px-4">
         <SectionHead eyebrow="Popular destinations" title="Where travellers are heading now" />
         <div className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -584,7 +805,7 @@ const DEALS = [
 
 function Deals() {
   return (
-    <section id="deals" className="py-20">
+    <section id="deals" className="pt-15 pb-16">
       <div className="mx-auto max-w-7xl px-4">
         <SectionHead eyebrow="Featured deals" title="Handpicked offers from our partners" />
         <div className="mt-10 grid gap-5 lg:grid-cols-3">
@@ -630,7 +851,7 @@ const STEPS = [
 
 function HowItWorks() {
   return (
-    <section className="bg-secondary/40 py-20">
+    <section className="bg-secondary/40 pt-15 pb-16">
       <div className="mx-auto max-w-7xl px-4">
         <SectionHead eyebrow="How it works" title="Book in four simple steps" />
         <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
@@ -663,7 +884,7 @@ const FAQS = [
   },
   {
     q: "Is there any booking fee?",
-    a: "No. SkyCompare is completely free to use. We may earn an affiliate commission from partners when you book, at no extra cost to you.",
+    a: "No. HotelzOff is completely free to use. We may earn an affiliate commission from partners when you book, at no extra cost to you.",
   },
   {
     q: "Which travel partners are available?",
@@ -677,7 +898,7 @@ const FAQS = [
 
 function FAQ() {
   return (
-    <section className="py-20">
+    <section className="pt-15 pb-16">
       <div className="mx-auto max-w-3xl px-4">
         <SectionHead eyebrow="FAQ" title="Answers to common questions" />
         <Accordion type="single" collapsible className="mt-8">
@@ -692,70 +913,6 @@ function FAQ() {
         </Accordion>
       </div>
     </section>
-  );
-}
-
-/* ------------------------------ Footer ------------------------------ */
-
-function Footer() {
-  return (
-    <footer id="contact" className="border-t border-border bg-secondary/60">
-      <div className="mx-auto max-w-7xl px-4 py-14">
-        <div className="grid gap-10 md:grid-cols-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <img src={logo} alt="SkyCompare" className="h-9 w-9" width={36} height={36} loading="lazy" />
-              <span className="text-lg font-bold">
-                Sky<span className="text-gradient-brand">Compare</span>
-              </span>
-            </div>
-            <p className="mt-4 max-w-xs text-sm text-muted-foreground">
-              Compare hotels and flights from the world's most trusted travel brands — all in one place.
-            </p>
-            <div className="mt-5 flex gap-3">
-              {[Twitter, Facebook, Instagram, Youtube].map((Icon, i) => (
-                <a
-                  key={i}
-                  href="#"
-                  aria-label="Social link"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-background text-foreground/70 shadow-soft ring-1 ring-border transition hover:text-primary"
-                >
-                  <Icon className="h-4 w-4" />
-                </a>
-              ))}
-            </div>
-          </div>
-
-          <FooterCol title="Company" links={["About", "Contact", "Careers", "Blog"]} />
-          <FooterCol title="Legal" links={["Privacy Policy", "Terms & Conditions", "Cookie Policy", "Affiliate Disclosure"]} />
-          <FooterCol title="Support" links={["Help Center", "How it works", "Partner with us", "Report an issue"]} />
-        </div>
-
-        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center">
-          <p>© {new Date().getFullYear()} SkyCompare. All rights reserved.</p>
-          <p className="max-w-2xl sm:text-right">
-            Affiliate disclosure: SkyCompare may earn a commission when you book via a partner link. This never affects the price you pay.
-          </p>
-        </div>
-      </div>
-    </footer>
-  );
-}
-
-function FooterCol({ title, links }: { title: string; links: string[] }) {
-  return (
-    <div>
-      <h4 className="text-sm font-bold text-foreground">{title}</h4>
-      <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
-        {links.map((l) => (
-          <li key={l}>
-            <a href="#" className="transition hover:text-primary">
-              {l}
-            </a>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }
 
