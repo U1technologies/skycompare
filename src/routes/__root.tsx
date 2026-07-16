@@ -97,7 +97,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" },
     ],
     scripts: [
-      { src: "https://www.googletagmanager.com/gtag/js?id=G-T6RRLNCT01", async: true },
+      { src: "https://www.googletagmanager.com/gtag/js?id=G-LP9NQXSKWR", async: true },
       {
         // Initializes window.dataLayer, which src/lib/analytics.ts's track()
         // already pushes every redirect_attempt/redirect_success/etc. event
@@ -106,7 +106,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "window.dataLayer = window.dataLayer || [];" +
           "function gtag(){dataLayer.push(arguments);}" +
           "gtag('js', new Date());" +
-          "gtag('config', 'G-T6RRLNCT01');",
+          "gtag('config', 'G-LP9NQXSKWR');",
       },
     ],
   }),
