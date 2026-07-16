@@ -73,7 +73,7 @@ export function Footer() {
         <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-border pt-6 text-xs text-muted-foreground sm:flex-row sm:items-center">
           <p>© {new Date().getFullYear()} HotelzOff. All rights reserved.</p>
           <p className="sm:text-right">
-            Marketed by <span className="font-bold text-foreground">Digigrove Digital</span>
+            Marketed by <span className="font-bold text-foreground">NextagMedia</span>
           </p>
         </div>
       </div>
