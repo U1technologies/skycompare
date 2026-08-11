@@ -11,6 +11,8 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { getKayakLinkContext } from "../lib/kayak.functions";
+import { KayakLinkProvider } from "../lib/kayak-link-context";
 
 function NotFoundComponent() {
   return (
@@ -73,7 +75,24 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
 }
 
 export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
-  head: () => ({
+  /**
+   * Resolve this visitor's KAYAK market and deeplink code once, during the
+   * server render, so search buttons can carry a finished KAYAK href and a
+   * click needs no request to us. Never let it fail the page: without it the
+   * buttons fall back to /go, which resolves the same link server-side.
+   */
+  loader: async () => {
+    try {
+      return { kayakLink: await getKayakLinkContext() };
+    } catch (error) {
+      console.error("Failed to resolve KAYAK link context", error);
+      return { kayakLink: undefined };
+    }
+  },
+  // Per-visitor and effectively constant, so client navigations reuse it
+  // instead of asking the server again.
+  staleTime: Infinity,
+  head: ({ loaderData }) => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
@@ -95,6 +114,14 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" },
+      // Pre-connect to the exact KAYAK domain this visitor will be sent to
+      // (kayak.co.in, kayak.co.uk, ...) before they click, so DNS, TCP and TLS
+      // are already done when the click happens. Measured at ~40 ms saved.
+      {
+        rel: "preconnect",
+        href: `https://${loaderData?.kayakLink?.domain ?? "www.kayak.com"}`,
+        crossOrigin: "anonymous",
+      },
     ],
     scripts: [
       { src: "https://www.googletagmanager.com/gtag/js?id=G-LP9NQXSKWR", async: true },
@@ -102,29 +129,36 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         // Initializes window.dataLayer, which src/lib/analytics.ts's track()
         // already pushes every redirect_attempt/redirect_success/etc. event
         // into — without this, that push target never existed.
+        // transport_type: 'beacon' makes GA4 use navigator.sendBeacon so it
+        // never blocks navigation with an XHR.
         children:
           "window.dataLayer = window.dataLayer || [];" +
           "function gtag(){dataLayer.push(arguments);}" +
           "gtag('js', new Date());" +
-          "gtag('config', 'G-LP9NQXSKWR');",
+          "gtag('config', 'G-LP9NQXSKWR', {'transport_type': 'beacon'});",
       },
-      <!-- Meta Pixel Code -->
-<script>
-!function(f,b,e,v,n,t,s)
-{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-n.queue=[];t=b.createElement(e);t.async=!0;
-t.src=v;s=b.getElementsByTagName(e)[0];
-s.parentNode.insertBefore(t,s)}(window, document,'script',
-'https://connect.facebook.net/en_US/fbevents.js');
-fbq('init', '1394984585847930');
-fbq('track', 'PageView');
-</script>
-<noscript><img height="1" width="1" style="display:none"
-src="https://www.facebook.com/tr?id=1394984585847930&ev=PageView&noscript=1"
-/></noscript>
-<!-- End Meta Pixel Code -->
+      {
+        /**
+         * Meta Pixel 1394984585847930, as a script entry rather than raw HTML.
+         * This is a .tsx module, not an HTML file, so a pasted <script> block
+         * cannot be parsed here — `scripts` takes objects, and `children` is
+         * the inline-script body. The snippet itself is Meta's, unchanged.
+         *
+         * The matching <noscript> image lives in RootShell, since it is body
+         * markup rather than a script.
+         */
+        children:
+          "!function(f,b,e,v,n,t,s)" +
+          "{if(f.fbq)return;n=f.fbq=function(){n.callMethod?" +
+          "n.callMethod.apply(n,arguments):n.queue.push(arguments)};" +
+          "if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';" +
+          "n.queue=[];t=b.createElement(e);t.async=!0;" +
+          "t.src=v;s=b.getElementsByTagName(e)[0];" +
+          "s.parentNode.insertBefore(t,s)}(window, document,'script'," +
+          "'https://connect.facebook.net/en_US/fbevents.js');" +
+          "fbq('init', '1394984585847930');" +
+          "fbq('track', 'PageView');",
+      },
     ],
   }),
   shellComponent: RootShell,
@@ -140,6 +174,18 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        {/* Meta Pixel's no-JS fallback, the counterpart to the pixel script in
+            `head` above. Body markup, so it belongs here rather than in
+            `scripts`. */}
+        <noscript>
+          <img
+            height="1"
+            width="1"
+            style={{ display: "none" }}
+            src="https://www.facebook.com/tr?id=1394984585847930&ev=PageView&noscript=1"
+            alt=""
+          />
+        </noscript>
         {children}
         <Scripts />
       </body>
@@ -149,11 +195,14 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
+  const { kayakLink } = Route.useLoaderData();
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
+      <KayakLinkProvider value={kayakLink}>
+        {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
+        <Outlet />
+      </KayakLinkProvider>
     </QueryClientProvider>
   );
 }

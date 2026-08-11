@@ -6,12 +6,22 @@
  * dates, travellers, rooms, cabin class).
  *
  * buildKayakHotelUrl/buildKayakFlightUrl return a *relative* KAYAK path
- * (e.g. "/hotels/paris/2026-08-01/2026-08-05/2adults"). That path gets
- * wrapped server-side into KAYAK's tracked deep-link redirect —
- * https://www.kayak.com/in?a=<deeplink code>&lc=en&url=<this path> —
- * using the "Deeplink integration code" from process.env.KAYAK_DEEPLINK_CODE
- * (Affiliate Network dashboard → Products → Text links). See
- * src/lib/kayak.functions.ts.
+ * (e.g. "/hotels/paris/2026-08-01/2026-08-05/2adults"). wrapKayakTrackedUrl
+ * turns that path into the final absolute link through KAYAK's tracked
+ * deep-link redirect —
+ * https://<market domain>/in?a=<deeplink code>&lc=en&url=<this path> —
+ * where the code is the "Deeplink integration code" from the Affiliate
+ * Network dashboard (Products → Text links).
+ *
+ * Both halves of the site build links through the same two steps:
+ *   - the search buttons on the homepage, so a click is a plain <a> straight
+ *     to KAYAK with nothing of ours in the middle (see SearchSubmit in
+ *     src/routes/index.tsx);
+ *   - the /go route, which resolves the same link server-side for shared
+ *     links and for visitors without JS (see src/lib/kayak-redirect.ts).
+ *
+ * The market domain and deeplink code are always passed in rather than read
+ * from the environment here, because this module runs in the browser too.
  */
 
 export type HotelSearch = {
@@ -128,6 +138,40 @@ export function buildFlightShareLink(s: FlightSearch) {
   return `/?${toQuery({ type: "flight", ...s })}`;
 }
 
-export function openRedirect(url: string) {
-  if (typeof window !== "undefined") window.location.assign(url);
+/**
+ * Everything needed to turn a relative KAYAK path into the final tracked link.
+ * Resolved per visitor on the server (see getKayakLinkContext in
+ * kayak.functions.ts) and handed to the browser with the page, so a search
+ * click needs no round-trip of ours to work out where to go.
+ */
+export type KayakLinkContext = {
+  /** Market-specific KAYAK domain for this visitor, e.g. "kayak.co.in". */
+  domain: string;
+  /** Affiliate deeplink code. Absent in local dev, where links go untracked. */
+  deeplinkCode?: string;
+};
+
+/**
+ * Wrap a relative KAYAK path in the tracked /in redirect that credits us for
+ * the click. Without a deeplink code (local dev) it returns a plain, untracked
+ * KAYAK link so the flow still works end to end.
+ */
+export function wrapKayakTrackedUrl(relativePath: string, ctx: KayakLinkContext): string {
+  if (!ctx.deeplinkCode) return new URL(relativePath, `https://${ctx.domain}`).toString();
+
+  const redirect = new URL(`https://${ctx.domain}/in`);
+  redirect.searchParams.set("a", ctx.deeplinkCode);
+  redirect.searchParams.set("lc", "en");
+  redirect.searchParams.set("url", relativePath);
+  return redirect.toString();
+}
+
+/** Final KAYAK hotel link for this visitor, ready to use as an href. */
+export function buildKayakHotelLink(s: HotelSearch, ctx: KayakLinkContext): string {
+  return wrapKayakTrackedUrl(buildKayakHotelUrl(s), ctx);
+}
+
+/** Final KAYAK flight link for this visitor, ready to use as an href. */
+export function buildKayakFlightLink(s: FlightSearch, ctx: KayakLinkContext): string {
+  return wrapKayakTrackedUrl(buildKayakFlightUrl(s), ctx);
 }

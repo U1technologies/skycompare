@@ -1,71 +1,46 @@
 /**
- * Server function that validates /go query params and returns a KAYAK
- * deep-link URL built from KAYAK's tracked redirect endpoint:
- *   https://<market domain>/in?a=<deeplink code>&lc=en&url=<relative KAYAK path>
+ * Server functions for the KAYAK handoff.
  *
- * `a` is the "Deeplink integration code" from process.env.KAYAK_DEEPLINK_CODE
- * (Affiliate Network dashboard → Products → Text links) — this is what KAYAK
- * actually keys click/booking attribution on. Building it server-side just
- * keeps the code in one place; unlike a real API key it isn't secret, since
- * it ends up in plain sight in the redirect URL the browser navigates to.
- *
- * The market (which KAYAK domain) is resolved by resolveKayakMarket: an
- * explicit ?market= override, else the visitor's country from Cloudflare's
- * cf-ipcountry header, else "us". See kayak-markets.ts.
+ * Both exist because the final link depends on two things the browser cannot
+ * know by itself: the deeplink code in process.env.KAYAK_DEEPLINK_CODE, and the
+ * visitor's country from Cloudflare's cf-ipcountry request header.
  */
 import { createServerFn } from "@tanstack/react-start";
-import { getRequestHeader } from "@tanstack/react-start/server";
-import { goSchema } from "./go-schema";
-import { buildKayakHotelUrl, buildKayakFlightUrl } from "./affiliates";
+import { getRequestHeader, getRequestUrl } from "@tanstack/react-start/server";
+import { buildKayakUrl } from "./kayak-redirect";
 import { resolveKayakMarket } from "./kayak-markets";
+import type { KayakLinkContext } from "./affiliates";
 
-export type BuildKayakResult =
-  | { ok: true; url: string; providerName: "KAYAK"; type: "hotel" | "flight" }
-  | { ok: false; error: string; paramPath?: string };
+export type { BuildKayakResult } from "./kayak-redirect";
 
+/**
+ * Resolve this visitor's KAYAK market and our deeplink code, once, while the
+ * page is being server-rendered. The root route loads this and hands it to the
+ * app (see KayakLinkProvider), which lets the search buttons carry a finished
+ * KAYAK href — so clicking Search is a plain link click with no request to us
+ * in the way.
+ *
+ * The deeplink code does reach the browser this way. That is acceptable: it is
+ * already public, appearing in the address bar of every visitor we send to
+ * KAYAK. The Autocomplete API key is the secret one and stays server-side.
+ */
+export const getKayakLinkContext = createServerFn({ method: "GET" }).handler(
+  async (): Promise<KayakLinkContext> => {
+    // ?market=uk overrides the detected country, which makes QA of a specific
+    // market possible without a VPN. Read from the request rather than route
+    // search params so it works the same on every page.
+    const explicitMarket = getRequestUrl().searchParams.get("market");
+    const { domain } = resolveKayakMarket(explicitMarket, getRequestHeader("cf-ipcountry"));
+
+    return { domain, deeplinkCode: process.env.KAYAK_DEEPLINK_CODE?.trim() || undefined };
+  },
+);
+
+/**
+ * Build the redirect target for the /go route's page component — the "confirm"
+ * mode and the "we couldn't build that link" error card. The happy path never
+ * reaches this: /go's GET handler answers with a 302 before React is involved.
+ */
 export const buildKayakRedirect = createServerFn({ method: "GET" })
   .validator((input: Record<string, unknown>) => input)
-  .handler(async ({ data }): Promise<BuildKayakResult> => {
-    const parsed = goSchema.safeParse(data);
-    if (!parsed.success) {
-      const first = parsed.error.issues[0];
-      const paramPath = first?.path.join(".") || "input";
-      return {
-        ok: false,
-        error: first ? `${paramPath}: ${first.message}` : "Invalid search parameters.",
-        paramPath,
-      };
-    }
-
-    const deeplinkCode = process.env.KAYAK_DEEPLINK_CODE?.trim();
-    const explicitMarket = typeof data.market === "string" ? data.market : undefined;
-    const detectedCountry = getRequestHeader("cf-ipcountry");
-    const { domain } = resolveKayakMarket(explicitMarket, detectedCountry);
-
-    try {
-      const relativePath =
-        parsed.data.type === "hotel"
-          ? buildKayakHotelUrl(parsed.data)
-          : buildKayakFlightUrl(parsed.data);
-
-      let url: string;
-      if (deeplinkCode) {
-        const redirect = new URL(`https://${domain}/in`);
-        redirect.searchParams.set("a", deeplinkCode);
-        redirect.searchParams.set("lc", "en");
-        redirect.searchParams.set("url", relativePath);
-        url = redirect.toString();
-      } else {
-        // No deeplink code configured (e.g. local dev) — fall back to a
-        // plain, untracked KAYAK link so the redirect still works.
-        url = new URL(relativePath, `https://${domain}`).toString();
-      }
-
-      return { ok: true, url, providerName: "KAYAK", type: parsed.data.type };
-    } catch (err) {
-      return {
-        ok: false,
-        error: err instanceof Error ? err.message : "Failed to build KAYAK URL.",
-      };
-    }
-  });
+  .handler(async ({ data }) => buildKayakUrl(data, getRequestHeader("cf-ipcountry")));
