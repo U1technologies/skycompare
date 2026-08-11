@@ -124,7 +124,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
     ],
     scripts: [
-      { src: "https://www.googletagmanager.com/gtag/js?id=G-T6RRLNCT01", async: true },
+      { src: "https://www.googletagmanager.com/gtag/js?id=G-LP9NQXSKWR", async: true },
       {
         // Initializes window.dataLayer, which src/lib/analytics.ts's track()
         // already pushes every redirect_attempt/redirect_success/etc. event
@@ -135,7 +135,29 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
           "window.dataLayer = window.dataLayer || [];" +
           "function gtag(){dataLayer.push(arguments);}" +
           "gtag('js', new Date());" +
-          "gtag('config', 'G-T6RRLNCT01', {'transport_type': 'beacon'});",
+          "gtag('config', 'G-LP9NQXSKWR', {'transport_type': 'beacon'});",
+      },
+      {
+        /**
+         * Meta Pixel 1394984585847930, as a script entry rather than raw HTML.
+         * This is a .tsx module, not an HTML file, so a pasted <script> block
+         * cannot be parsed here — `scripts` takes objects, and `children` is
+         * the inline-script body. The snippet itself is Meta's, unchanged.
+         *
+         * The matching <noscript> image lives in RootShell, since it is body
+         * markup rather than a script.
+         */
+        children:
+          "!function(f,b,e,v,n,t,s)" +
+          "{if(f.fbq)return;n=f.fbq=function(){n.callMethod?" +
+          "n.callMethod.apply(n,arguments):n.queue.push(arguments)};" +
+          "if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';" +
+          "n.queue=[];t=b.createElement(e);t.async=!0;" +
+          "t.src=v;s=b.getElementsByTagName(e)[0];" +
+          "s.parentNode.insertBefore(t,s)}(window, document,'script'," +
+          "'https://connect.facebook.net/en_US/fbevents.js');" +
+          "fbq('init', '1394984585847930');" +
+          "fbq('track', 'PageView');",
       },
     ],
   }),
@@ -152,6 +174,18 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
       </head>
       <body>
+        {/* Meta Pixel's no-JS fallback, the counterpart to the pixel script in
+            `head` above. Body markup, so it belongs here rather than in
+            `scripts`. */}
+        <noscript>
+          <img
+            height="1"
+            width="1"
+            style={{ display: "none" }}
+            src="https://www.facebook.com/tr?id=1394984585847930&ev=PageView&noscript=1"
+            alt=""
+          />
+        </noscript>
         {children}
         <Scripts />
       </body>
