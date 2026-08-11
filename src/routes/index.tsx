@@ -9,6 +9,7 @@ import {
   CalendarDays,
   Users,
   Search,
+  Loader2,
   Plus,
   Minus,
   ShieldCheck,
@@ -21,7 +22,6 @@ import {
   ArrowRight,
   Twitter,
   Facebook,
-  Instagram,
   Youtube,
   Copy,
 } from "lucide-react";
@@ -58,10 +58,13 @@ import {
   buildFlightRedirect,
   buildHotelShareLink,
   buildFlightShareLink,
-  openRedirect,
+  buildKayakHotelLink,
+  buildKayakFlightLink,
   type HotelSearch,
   type FlightSearch,
 } from "@/lib/affiliates";
+import { useKayakLinkContext } from "@/lib/kayak-link-context";
+import { track } from "@/lib/analytics";
 import { DestinationAutocomplete } from "@/components/DestinationAutocomplete";
 import { useAnchoredMenuPosition } from "@/hooks/use-anchored-menu-position";
 import { Header, Footer } from "@/components/SharedLayout";
@@ -318,29 +321,127 @@ function Field({
 
 const inputClass = "h-auto border-0 bg-transparent p-0 pl-0.5 pt-0.5 text-sm font-semibold leading-normal shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 placeholder:text-foreground/50 placeholder:font-medium";
 
+const searchButtonClass =
+  "h-full flex-1 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95";
+
+/**
+ * The Search button, which is where the speed of the whole handoff is decided.
+ *
+ * When the search is valid this is a real <a> carrying the finished KAYAK URL,
+ * built while the visitor was still filling the form. The click costs nothing of
+ * ours: no request to our server, no page of ours in between, no new tab. The
+ * browser navigates this tab straight to KAYAK.
+ *
+ * The one thing no site can avoid is that the browser has to keep showing this
+ * page until KAYAK answers, measured at ~1.4 s (their affiliate tracker hop,
+ * then their results page's first byte). So the button switches to a spinner on
+ * click. That is feedback inside the button the visitor already pressed, not an
+ * interstitial: KAYAK's own loading state takes over the moment their page
+ * paints. Remove the spinner and the same 1.4 s simply looks like a frozen
+ * page, which is worse, not faster.
+ *
+ * When the search is invalid it stays a <button> that says what is missing, so
+ * the page never holds a broken affiliate link for a middle-click or a crawler
+ * to find.
+ *
+ * rel: "sponsored nofollow" is the annotation Google requires on paid affiliate
+ * links. The referrer is left intact on purpose, because KAYAK reports on
+ * traffic source and the affiliate code travels in the URL anyway.
+ */
+function SearchSubmit({
+  error,
+  href,
+  type,
+}: {
+  error: string | null;
+  href: string;
+  type: "hotel" | "flight";
+}) {
+  const [handingOff, setHandingOff] = useState(false);
+
+  /**
+   * Coming back from KAYAK restores this page from the browser's back/forward
+   * cache with its DOM exactly as it was left, spinner included. pageshow fires
+   * on that restore, so the button goes back to "Search" instead of spinning
+   * forever.
+   */
+  useEffect(() => {
+    const reset = () => setHandingOff(false);
+    window.addEventListener("pageshow", reset);
+    return () => window.removeEventListener("pageshow", reset);
+  }, []);
+
+  if (error) {
+    return (
+      <Button
+        onClick={() => toast.error(error)}
+        aria-label="Search"
+        data-testid="search-submit"
+        className={searchButtonClass}
+      >
+        <Search className="mr-2 h-5 w-5" /> Search
+      </Button>
+    );
+  }
+
+  return (
+    <Button asChild className={searchButtonClass}>
+      <a
+        href={href}
+        rel="sponsored nofollow"
+        aria-label="Search"
+        data-testid="search-submit"
+        onClick={(e) => {
+          track("redirect_attempt", { provider: "kayak", type });
+          // A modified click (cmd, ctrl, shift, middle button) opens KAYAK
+          // elsewhere and leaves this page where it is, so it must not start a
+          // spinner that nothing would ever clear.
+          const leavesThisTab = !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
+          if (leavesThisTab) setHandingOff(true);
+        }}
+      >
+        {handingOff ? (
+          <>
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Searching
+          </>
+        ) : (
+          <>
+            <Search className="mr-2 h-5 w-5" /> Search
+          </>
+        )}
+      </a>
+    </Button>
+  );
+}
+
+/** The first thing wrong with a hotel search, or null when it's ready to go. */
+function hotelValidationError(s: HotelSearch): string | null {
+  if (!s.destination.trim()) return "Please enter a destination";
+  if (new Date(s.checkOut) <= new Date(s.checkIn)) return "Check-out must be after check-in";
+  return null;
+}
 
 function HotelForm({ initial, showCopyLink = false }: { initial: IndexSearch; showCopyLink?: boolean }) {
   const [s, setS] = useState<HotelSearch>(() => initialHotelSearch(initial));
+  const kayakLink = useKayakLinkContext();
+  const error = hotelValidationError(s);
 
-  const validate = () => {
-    if (!s.destination.trim()) {
-      toast.error("Please enter a destination");
-      return false;
-    }
-    if (new Date(s.checkOut) <= new Date(s.checkIn)) {
-      toast.error("Check-out must be after check-in");
-      return false;
-    }
-    return true;
-  };
-
-  const handleSearch = () => {
-    if (!validate()) return;
-    openRedirect(buildHotelRedirect(s));
-  };
+  /**
+   * Rebuilt as the form changes so it is ready before the click. Without the
+   * link context — the root loader failed, or this page was reached by a
+   * client-side navigation that hasn't resolved it — fall back to /go, which
+   * resolves the same destination server-side and redirects.
+   */
+  const kayakHref = useMemo(
+    () => (kayakLink ? buildKayakHotelLink(s, kayakLink) : buildHotelRedirect(s)),
+    [s, kayakLink],
+  );
 
   const handleCopyLink = async () => {
-    if (!validate()) return;
+    if (error) {
+      toast.error(error);
+      return;
+    }
     const link = `${window.location.origin}${buildHotelShareLink(s)}`;
     await navigator.clipboard.writeText(link);
     toast.success("Link copied!");
@@ -375,13 +476,7 @@ function HotelForm({ initial, showCopyLink = false }: { initial: IndexSearch; sh
           />
         </Field>
         <div className="flex h-[3.75rem] gap-1.5 sm:h-16">
-          <Button
-            onClick={handleSearch}
-            aria-label="Search"
-            className="h-full flex-1 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95"
-          >
-            <Search className="mr-2 h-5 w-5" /> Search
-          </Button>
+          <SearchSubmit error={error} href={kayakHref} type="hotel" />
           {showCopyLink && (
             <Button
               type="button"
@@ -537,24 +632,28 @@ function GuestCounterRow({
   );
 }
 
+/** The first thing wrong with a flight search, or null when it's ready to go. */
+function flightValidationError(s: FlightSearch): string | null {
+  if (!s.from.trim() || !s.to.trim()) return "Enter both From and To airports";
+  return null;
+}
+
 function FlightForm({ initial, showCopyLink = false }: { initial: IndexSearch; showCopyLink?: boolean }) {
   const [s, setS] = useState<FlightSearch>(() => initialFlightSearch(initial));
+  const kayakLink = useKayakLinkContext();
+  const error = flightValidationError(s);
 
-  const validate = () => {
-    if (!s.from.trim() || !s.to.trim()) {
-      toast.error("Enter both From and To airports");
-      return false;
-    }
-    return true;
-  };
-
-  const handleSearch = () => {
-    if (!validate()) return;
-    openRedirect(buildFlightRedirect(s));
-  };
+  /** Ready before the click; see the matching comment in HotelForm. */
+  const kayakHref = useMemo(
+    () => (kayakLink ? buildKayakFlightLink(s, kayakLink) : buildFlightRedirect(s)),
+    [s, kayakLink],
+  );
 
   const handleCopyLink = async () => {
-    if (!validate()) return;
+    if (error) {
+      toast.error(error);
+      return;
+    }
     const link = `${window.location.origin}${buildFlightShareLink(s)}`;
     await navigator.clipboard.writeText(link);
     toast.success("Link copied!");
@@ -582,7 +681,7 @@ function FlightForm({ initial, showCopyLink = false }: { initial: IndexSearch; s
             value={s.from}
             onChange={(v) => setS({ ...s, from: v })}
             kinds={["airport", "city"]}
-            placeholder="JFK"
+            placeholder="Origin airport or city"
             autoUpper
             apiVertical="flights"
             debounceMs={250}
@@ -593,13 +692,13 @@ function FlightForm({ initial, showCopyLink = false }: { initial: IndexSearch; s
             value={s.to}
             onChange={(v) => setS({ ...s, to: v })}
             kinds={["airport", "city"]}
-            placeholder="LHR"
+            placeholder="Destination airport or city"
             autoUpper
             apiVertical="flights"
             debounceMs={250}
           />
         </Field>
-        <Field label="Departure" icon={<CalendarDays className="h-3 w-3" />}>
+        <Field label="Depart" icon={<CalendarDays className="h-3 w-3" />}>
           <Input type="date" className={inputClass} value={s.depart} onChange={(e) => setS({ ...s, depart: e.target.value })} />
         </Field>
         <Field label="Return" icon={<CalendarDays className="h-3 w-3" />}>
@@ -628,9 +727,7 @@ function FlightForm({ initial, showCopyLink = false }: { initial: IndexSearch; s
           </div>
         </Field>
         <div className="flex h-[3.75rem] gap-1.5 sm:h-16">
-          <Button onClick={handleSearch} className="h-full flex-1 rounded-2xl bg-gradient-brand text-base font-bold text-primary-foreground shadow-brand hover:opacity-95">
-            <Search className="mr-2 h-5 w-5" /> Search
-          </Button>
+          <SearchSubmit error={error} href={kayakHref} type="flight" />
           {showCopyLink && (
             <Button
               type="button"

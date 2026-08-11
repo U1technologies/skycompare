@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { ExternalLink, AlertTriangle, Plane, RefreshCw } from "lucide-react";
 import { buildKayakRedirect, type BuildKayakResult } from "@/lib/kayak.functions";
+import { buildKayakUrl } from "@/lib/kayak-redirect";
 import { REDIRECT_MODE, AUTO_REDIRECT_DELAY_MS } from "@/lib/affiliate-config";
 import { track } from "@/lib/analytics";
 import { Button } from "@/components/ui/button";
@@ -9,12 +10,27 @@ import { Button } from "@/components/ui/button";
 /**
  * KAYAK redirect handler.
  *
- * We call the `buildKayakRedirect` server function so the request is built
- * from KAYAK's tracked /in redirect endpoint (deeplink code from
- * process.env.KAYAK_DEEPLINK_CODE). The final URL preserves every field the
- * user filled in (destination, dates, travellers, rooms, cabin class) so
- * KAYAK opens directly on the matching results page — and logs the click
- * against our affiliate account.
+ * The URL is built from KAYAK's tracked /in redirect endpoint (deeplink code
+ * from process.env.KAYAK_DEEPLINK_CODE) and preserves every field the user
+ * filled in (destination, dates, travellers, rooms, cabin class) so KAYAK
+ * opens directly on the matching results page — and logs the click against
+ * our affiliate account.
+ *
+ * How the redirect happens
+ * -----------------------
+ * The `server.handlers.GET` handler below answers the browser with a plain
+ * HTTP 302 to KAYAK. Nothing is rendered, downloaded or hydrated, so there is
+ * no visible interstitial: the browser goes from the search button straight to
+ * KAYAK's results page.
+ *
+ * `GoPage` is only reached when the handler defers with `next()`:
+ *   - the params failed validation      → the error card, so the visitor can
+ *                                         fix the search instead of landing on
+ *                                         a broken KAYAK page;
+ *   - REDIRECT_MODE === "confirm"       → the "Continue to KAYAK" card;
+ *   - a client-side navigation to /go   → no document request, so no server
+ *                                         handler; the component redirects via
+ *                                         window.location.replace instead.
  */
 
 type Search = Record<string, string | undefined>;
@@ -27,6 +43,30 @@ export const Route = createFileRoute("/go")({
       out[k] = String(v);
     }
     return out;
+  },
+  server: {
+    handlers: {
+      GET: ({ request, next }) => {
+        const { searchParams } = new URL(request.url);
+        const result = buildKayakUrl(
+          Object.fromEntries(searchParams),
+          request.headers.get("cf-ipcountry") ?? undefined,
+        );
+
+        // Invalid params or confirm mode: render the page instead.
+        if (!result.ok || REDIRECT_MODE !== "auto") return next();
+
+        return new Response(null, {
+          status: 302,
+          headers: {
+            Location: result.url,
+            // The target depends on the visitor's country, and an affiliate
+            // click should never be served from a cache.
+            "Cache-Control": "no-store",
+          },
+        });
+      },
+    },
   },
   loader: async ({ location }) => {
     return await buildKayakRedirect({ data: location.search as Record<string, unknown> });
@@ -127,16 +167,8 @@ function GoPage() {
           <a href={result.url}>Continue to KAYAK</a>
         </noscript>
         <div className="mt-6">
-          <Button
-            asChild
-            variant="outline"
-            className="w-full"
-          >
-            <a
-              data-testid="continue-link"
-              href={result.url}
-              rel="noopener noreferrer"
-            >
+          <Button asChild variant="outline" className="w-full">
+            <a data-testid="continue-link" href={result.url} rel="noopener noreferrer">
               Continue to KAYAK <ExternalLink className="ml-2 h-4 w-4" />
             </a>
           </Button>

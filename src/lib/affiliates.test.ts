@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildKayakHotelUrl, buildKayakFlightUrl } from "./affiliates";
+import { buildKayakHotelUrl, buildKayakFlightUrl, wrapKayakTrackedUrl } from "./affiliates";
 
 describe("buildKayakHotelUrl", () => {
   const base = {
@@ -31,7 +31,12 @@ describe("buildKayakHotelUrl", () => {
   });
 
   it("combines rooms and enrichment params in one query string", () => {
-    const url = buildKayakHotelUrl({ ...base, rooms: 3, placeId: 15470, entityKey: "kplace:15470" });
+    const url = buildKayakHotelUrl({
+      ...base,
+      rooms: 3,
+      placeId: 15470,
+      entityKey: "kplace:15470",
+    });
     const [path, qs] = url.split("?");
     const params = new URLSearchParams(qs);
 
@@ -74,6 +79,45 @@ describe("buildKayakFlightUrl", () => {
       travellers: 2,
       cabin: "business",
     });
-    expect(url).toBe("/flights/JFK-LAX/2026-08-01/2026-08-10/2adults?sort=bestflight_a&fs=cfc=business");
+    expect(url).toBe(
+      "/flights/JFK-LAX/2026-08-01/2026-08-10/2adults?sort=bestflight_a&fs=cfc=business",
+    );
+  });
+});
+
+describe("wrapKayakTrackedUrl", () => {
+  const path = "/hotels/goa/2026-07-21/2026-07-23/2adults";
+
+  it("routes through KAYAK's /in endpoint so the click is credited to us", () => {
+    const url = new URL(
+      wrapKayakTrackedUrl(path, { domain: "www.kayak.com", deeplinkCode: "kan_test_code" }),
+    );
+
+    expect(url.host).toBe("www.kayak.com");
+    expect(url.pathname).toBe("/in");
+    expect(url.searchParams.get("a")).toBe("kan_test_code");
+    expect(url.searchParams.get("lc")).toBe("en");
+    expect(url.searchParams.get("url")).toBe(path);
+  });
+
+  it("uses the market domain it is given, so visitors keep their own currency", () => {
+    const url = wrapKayakTrackedUrl(path, { domain: "kayak.co.in", deeplinkCode: "kan_test_code" });
+
+    expect(new URL(url).host).toBe("kayak.co.in");
+  });
+
+  it("still produces a working link when no deeplink code is configured", () => {
+    const url = wrapKayakTrackedUrl(path, { domain: "www.kayak.com" });
+
+    expect(url).toBe(`https://www.kayak.com${path}`);
+  });
+
+  it("keeps the hotel query string intact through the wrap", () => {
+    const url = wrapKayakTrackedUrl(`${path}?rooms=3`, {
+      domain: "www.kayak.com",
+      deeplinkCode: "kan_test_code",
+    });
+
+    expect(new URL(url).searchParams.get("url")).toBe(`${path}?rooms=3`);
   });
 });
