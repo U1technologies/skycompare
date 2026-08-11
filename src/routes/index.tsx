@@ -65,6 +65,7 @@ import {
 } from "@/lib/affiliates";
 import { useKayakLinkContext } from "@/lib/kayak-link-context";
 import { track } from "@/lib/analytics";
+import { today, addDays } from "@/lib/dates";
 import { DestinationAutocomplete } from "@/components/DestinationAutocomplete";
 import { useAnchoredMenuPosition } from "@/hooks/use-anchored-menu-position";
 import { Header, Footer } from "@/components/SharedLayout";
@@ -105,13 +106,6 @@ export const Route = createFileRoute("/")({
   }),
   component: Index,
 });
-
-const today = () => new Date().toISOString().slice(0, 10);
-const addDays = (n: number) => {
-  const d = new Date();
-  d.setDate(d.getDate() + n);
-  return d.toISOString().slice(0, 10);
-};
 
 function pickString(params: IndexSearch, key: string): string | undefined {
   const v = params[key];
