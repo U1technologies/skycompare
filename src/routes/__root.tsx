@@ -13,6 +13,7 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { getKayakLinkContext } from "../lib/kayak.functions";
 import { KayakLinkProvider } from "../lib/kayak-link-context";
+import { scheduleThirdPartyTags } from "../lib/deferred-tags";
 
 function NotFoundComponent() {
   return (
@@ -125,50 +126,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     ],
     scripts: [
       {
-        // Google Tag Manager (GTM-KFZJ35X4). Kept as the first script entry
-        // so it loads as early as possible, per Google's install instructions.
-        // Matching <noscript><iframe> fallback lives in RootShell's <body>.
-        children:
-          "(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':" +
-          "new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0]," +
-          "j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=" +
-          "'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);" +
-          "})(window,document,'script','dataLayer','GTM-KFZJ35X4');",
-      },
-      { src: "https://www.googletagmanager.com/gtag/js?id=G-LP9NQXSKWR", async: true },
-      {
-        // Initializes window.dataLayer, which src/lib/analytics.ts's track()
-        // already pushes every redirect_attempt/redirect_success/etc. event
-        // into — without this, that push target never existed.
-        // transport_type: 'beacon' makes GA4 use navigator.sendBeacon so it
-        // never blocks navigation with an XHR.
-        children:
-          "window.dataLayer = window.dataLayer || [];" +
-          "function gtag(){dataLayer.push(arguments);}" +
-          "gtag('js', new Date());" +
-          "gtag('config', 'G-LP9NQXSKWR', {'transport_type': 'beacon'});",
-      },
-      {
-        /**
-         * Meta Pixel 1394984585847930, as a script entry rather than raw HTML.
-         * This is a .tsx module, not an HTML file, so a pasted <script> block
-         * cannot be parsed here — `scripts` takes objects, and `children` is
-         * the inline-script body. The snippet itself is Meta's, unchanged.
-         *
-         * The matching <noscript> image lives in RootShell, since it is body
-         * markup rather than a script.
-         */
-        children:
-          "!function(f,b,e,v,n,t,s)" +
-          "{if(f.fbq)return;n=f.fbq=function(){n.callMethod?" +
-          "n.callMethod.apply(n,arguments):n.queue.push(arguments)};" +
-          "if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';" +
-          "n.queue=[];t=b.createElement(e);t.async=!0;" +
-          "t.src=v;s=b.getElementsByTagName(e)[0];" +
-          "s.parentNode.insertBefore(t,s)}(window, document,'script'," +
-          "'https://connect.facebook.net/en_US/fbevents.js');" +
-          "fbq('init', '1394984585847930');" +
-          "fbq('track', 'PageView');",
+        // Seeds window.dataLayer only — no network request, no main-thread
+        // work worth measuring. src/lib/analytics.ts's track() pushes every
+        // redirect_attempt/redirect_success/etc. event into this array, so it
+        // must exist from the first paint even though the actual GTM/GA4/Meta
+        // Pixel runtimes below are deferred (src/lib/deferred-tags.ts) until
+        // idle to keep them off the Total Blocking Time critical path.
+        children: "window.dataLayer = window.dataLayer || [];",
       },
     ],
   }),
@@ -179,6 +143,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 });
 
 function RootShell({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    scheduleThirdPartyTags();
+  }, []);
+
   return (
     <html lang="en">
       <head>
