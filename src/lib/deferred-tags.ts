@@ -96,17 +96,19 @@ function loadThirdPartyTags() {
 const INTERACTION_EVENTS = ["pointerdown", "mousemove", "keydown", "touchstart", "scroll"] as const;
 
 /**
- * Schedules the tag load for the visitor's first real interaction, so a
- * genuinely engaged visitor gets tracked almost immediately. Falls back to a
- * fixed timeout for visitors who never interact (lab performance tests, bots,
- * very passive readers).
+ * Fires shortly after the real `window.load` event — the point where the
+ * browser itself reports the page (including images/fonts) has finished
+ * loading — rather than an arbitrary fixed timer. A genuine interaction
+ * (scroll/tap/mouse move) fires it even earlier, since that unambiguously
+ * means a real visitor is present before `load` even completes.
  *
  * Deliberately NOT requestIdleCallback: measured on the live site, Chrome
  * decided the main thread was "idle" at ~445ms — before the page had even
  * finished its own hydration — so the tag scripts ended up executing right
- * on top of that work and made Total Blocking Time worse, not better. The
- * fallback timeout here (4s) is instead set past typical Time To Interactive
- * so lab tools stop measuring blocking time before these scripts ever run.
+ * on top of that work and made Total Blocking Time worse, not better.
+ * `load` is a real, unambiguous signal instead of a heuristic guess, so the
+ * buffer after it only needs to be small (300ms) rather than a multi-second
+ * worst-case timer.
  */
 export function scheduleThirdPartyTags(): void {
   if (typeof window === "undefined") return;
@@ -117,11 +119,23 @@ export function scheduleThirdPartyTags(): void {
   };
   const cleanup = () => {
     for (const event of INTERACTION_EVENTS) window.removeEventListener(event, trigger);
+    window.removeEventListener("load", onLoad);
+    window.clearTimeout(loadBuffer);
     window.clearTimeout(fallback);
+  };
+  let loadBuffer = 0;
+  const onLoad = () => {
+    loadBuffer = window.setTimeout(trigger, 300);
   };
 
   for (const event of INTERACTION_EVENTS) {
     window.addEventListener(event, trigger, { once: true, passive: true });
   }
-  const fallback = window.setTimeout(trigger, 4000);
+  if (document.readyState === "complete") {
+    onLoad();
+  } else {
+    window.addEventListener("load", onLoad, { once: true });
+  }
+  // Absolute backstop in case `load` never fires (a hung request, etc.).
+  const fallback = window.setTimeout(trigger, 6000);
 }
