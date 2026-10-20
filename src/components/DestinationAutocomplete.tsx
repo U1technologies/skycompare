@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MapPin, Plane, Building2, Compass, Star } from "lucide-react";
+import { MapPin, Plane, Building2, Star } from "lucide-react";
 import {
   searchDestinations,
   popularDestinations,
   type Destination,
   type DestinationKind,
 } from "@/lib/destinations";
-import { useNearbyDestinations } from "@/lib/use-nearby-destinations";
 import { useAnchoredMenuPosition } from "@/hooks/use-anchored-menu-position";
 import { Input } from "@/components/ui/input";
 import { autocompletePlaces, type AutocompletePlace } from "@/lib/kayak-autocomplete.functions";
@@ -46,7 +45,7 @@ const API_CACHE = new Map<string, Destination[]>();
  *    these carry KAYAK's real placeId/entityKey/lat/lng, which get threaded
  *    through to the final deep link. Falls back to the local list if the
  *    API is unconfigured, fails, or is still loading.
- *  - Default suggestions: nearby (via browser geolocation) → popular fallback
+ *  - Default suggestions: popular destinations
  *  - Keyboard navigation
  *
  * The canonical `label` picked from a suggestion is what gets sent to
@@ -90,10 +89,9 @@ export function DestinationAutocomplete({
     return () => clearTimeout(t);
   }, [value, debounced, debounceMs]);
 
-  const nearby = useNearbyDestinations({ kinds, limit: 6 });
   const defaults = useMemo<Destination[]>(() => {
-    return nearby.length > 0 ? nearby : popularDestinations({ kinds, limit: 6 });
-  }, [nearby, kinds]);
+    return popularDestinations({ kinds, limit: 6 });
+  }, [kinds]);
 
   const localResults = useMemo<Destination[]>(() => {
     const q = debounced.trim();
@@ -202,15 +200,7 @@ export function DestinationAutocomplete({
         >
           {showDefaults && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-              {nearby.length > 0 ? (
-                <>
-                  <Compass className="h-3 w-3" /> Nearby
-                </>
-              ) : (
-                <>
-                  <Star className="h-3 w-3" /> Popular right now
-                </>
-              )}
+              <Star className="h-3 w-3" /> Popular right now
             </div>
           )}
           {results.map((d, i) => (

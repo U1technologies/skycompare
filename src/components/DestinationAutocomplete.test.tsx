@@ -1,17 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { DestinationAutocomplete } from "./DestinationAutocomplete";
 import { buildHotelRedirect, buildFlightRedirect } from "@/lib/affiliates";
-
-// jsdom lacks geolocation — force fallback to "popular" defaults.
-beforeEach(() => {
-  Object.defineProperty(global.navigator, "geolocation", {
-    configurable: true,
-    value: undefined,
-  });
-});
 
 function Harness({
   initial = "",
