@@ -46,6 +46,8 @@ import { toast } from "sonner";
 import { Toaster } from "@/components/ui/sonner";
 
 import heroImage from "@/assets/hero-travel.jpg";
+import heroImageWebp1920 from "@/assets/hero-travel-1920.webp";
+import heroImageWebp960 from "@/assets/hero-travel-960.webp";
 import logo from "@/assets/logo.png";
 import bookingLogo from "@/assets/partners/booking.svg";
 import expediaLogo from "@/assets/partners/expedia.svg";
@@ -192,13 +194,23 @@ function Index() {
 function Hero({ initialSearch }: { initialSearch: IndexSearch }) {
   return (
     <section id="top" className="relative isolate w-full overflow-x-hidden pt-20 sm:pt-24">
-      <img
-        src={heroImage}
-        alt="Aerial view of a tropical island with overwater bungalows"
-        className="absolute inset-0 -z-10 h-full w-full object-cover"
-        width={1920}
-        height={1280}
-      />
+      <picture>
+        <source
+          type="image/webp"
+          srcSet={`${heroImageWebp960} 960w, ${heroImageWebp1920} 1920w`}
+          sizes="100vw"
+        />
+        <img
+          src={heroImage}
+          alt="Aerial view of a tropical island with overwater bungalows"
+          className="absolute inset-0 -z-10 h-full w-full object-cover"
+          width={1920}
+          height={1280}
+          // This is the page's LCP element (GTmetrix/Lighthouse measure it
+          // directly), so it gets a priority hint instead of lazy loading.
+          fetchPriority="high"
+        />
+      </picture>
       <div className="absolute inset-0 -z-10 bg-gradient-hero" />
 
       <div className="mx-auto max-w-7xl px-4 pb-10 pt-6 sm:px-6 sm:pb-14 sm:pt-10 lg:pb-20 lg:pt-14">
